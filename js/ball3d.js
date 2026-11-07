@@ -248,9 +248,14 @@ export class Ball3D {
     wall.receiveShadow = true; S.add(wall);
     S.add(new THREE.Mesh(strip(topPos), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide })));
     for (const a of [-45, -22.5, 0, 22.5, 45]) {
-      const t = a * D2R, r = PARK.fence(t) - 0.06, txt = String(Math.round(PARK.fence(t)));
+      const t = a * D2R, txt = String(Math.round(PARK.fence(t)));
       const m = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.4), new THREE.MeshBasicMaterial({ transparent: true, map: canvasTexture(384, 128, (g) => { g.fillStyle = '#ffffff'; g.font = '900 100px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 192, 70); }) }));
-      m.position.set(Math.sin(t) * r, PARK.fenceH(t) * 0.5, -Math.cos(t) * r); m.rotation.y = -t; S.add(m);
+      // lie flat along the wall: it curves, so follow its tangent rather than facing home plate
+      const at = (u) => new THREE.Vector3(Math.sin(u) * PARK.fence(u), 0, -Math.cos(u) * PARK.fence(u));
+      const tan = at(t + 0.01).sub(at(t - 0.01)), rot = Math.atan2(-tan.z, tan.x);
+      m.rotation.y = rot;
+      m.position.copy(at(t)).add(new THREE.Vector3(Math.sin(rot), 0, Math.cos(rot)).multiplyScalar(0.12)); m.position.y = PARK.fenceH(t) * 0.5;
+      S.add(m);
     }
     // foul poles
     for (const s of [-1, 1]) { const f = PARK.fence(s * PARK.foul), p = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 22, 10), new THREE.MeshBasicMaterial({ color: 0xffd23f })); p.position.set(s * Math.sin(PARK.foul) * f, 11, -Math.cos(PARK.foul) * f); S.add(p); }
