@@ -27,6 +27,8 @@
     <p>Your phone is both the lane and the ball. Hold the big button, swing the phone like a bowling ball, and let go of the button as your arm comes forward. Then watch the pins fly.</p>
     <p style="font-size:14px"><b>Grip it tight.</b> Don’t actually let go of the phone!</p>
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <label>Swing steers the ball <select id="steer"><option value="off">Off</option><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+    <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
     <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
     <button class="btn" id="go">Start &amp; enable motion</button>
     <p style="font-size:13px">Want a big screen and friends? Open <b>tv.html</b> on a laptop or TV and use <b>controller.html</b> on each phone.</p>
@@ -46,6 +48,8 @@
   const sfx = new SB.Sfx();
   $('name').value = SB.store.get('name', '');
   $('flip').checked = SB.store.get('flip', '0') === '1';
+  $('steer').value = SB.store.get('steer', 'normal');
+  $('flipSteer').checked = SB.store.get('flipSteer', '0') === '1';
 
   let info = null, hintTimer = 0;
   const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
@@ -57,13 +61,19 @@
     onNewGame: () => app.newGame(),
     onHold: on => app.input(0, { t: 'hold', on }),
     onThrow: r => {
-      app.input(0, { t: 'throw', speed: r.speed, spin: r.spin });
-      const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
-      showInfo(`${(r.speed * 3.6).toFixed(0)} km/h · ${sp}`);
+      app.input(0, { t: 'throw', speed: r.speed, spin: r.spin, steer: r.steer || 0 });
+      const d = describe(r);
+      showInfo(`${d.km} km/h · spin ${d.sp} · swing ${d.dir}`);
     },
     onHint: t => showInfo(t),
   });
 
+  function describe(r) {
+    const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
+    let dir = '—';
+    if (r.steerDeg !== null && r.steerDeg !== undefined) dir = Math.abs(r.steerDeg) < 2.5 ? 'straight' : (r.steerDeg > 0 ? '← ' : '→ ') + Math.abs(r.steerDeg).toFixed(0) + '°';
+    return { km: (r.speed * 3.6).toFixed(0), sp, dir };
+  }
   function showInfo(t) { $('info').textContent = t; clearTimeout(hintTimer); hintTimer = setTimeout(() => { $('info').textContent = ''; }, 3000); }
   function render() {
     if (!info) return;
@@ -80,7 +90,8 @@
     sfx.unlock();
     const name = $('name').value.trim().slice(0, 14) || 'You';
     SB.store.set('name', name === 'You' ? '' : name); SB.store.set('flip', $('flip').checked ? '1' : '0');
-    pad.det.flipSpin = $('flip').checked;
+    SB.store.set('steer', $('steer').value); SB.store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
+    pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
     await pad.enable();
     SB.keepAwake();
     if (!app.info().players.length) app.addPlayer(name);

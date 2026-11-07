@@ -129,6 +129,7 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .sheet input.name { font-size: 20px; letter-spacing: 0; text-transform: none; }
 .sheet label { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); margin: 10px 0; }
 .sheet .btn { width: 100%; margin-top: 6px; }
+.sheet select { font: inherit; background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
 
 /* solo: game on top, controls in a bottom drawer */
 .solo .stage { bottom: 0; }

@@ -34,10 +34,12 @@
     <p>Enter the code on the big screen.</p>
     <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <label>Swing steers the ball <select id="steer"><option value="off">Off</option><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+    <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
     <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. Twist your wrist at release for a hook.</p>
+    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. Swing straight to follow the aim arrow, or pull your swing left or right to steer. Twist your wrist at release for a hook.</p>
   </div>
 </div>
 
@@ -58,6 +60,8 @@
   $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
   $('name').value = store.get('name', '');
   $('flip').checked = store.get('flip', '0') === '1';
+  $('steer').value = store.get('steer', 'normal');
+  $('flipSteer').checked = store.get('flipSteer', '0') === '1';
 
   let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
 
@@ -80,14 +84,19 @@
     onNewGame: () => client.send({ t: 'newgame' }),
     onHold: on => client.send({ t: 'hold', on }),
     onThrow: r => {
-      client.send({ t: 'throw', speed: r.speed, spin: r.spin });
-      const km = (r.speed * 3.6).toFixed(0);
-      const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
-      $('readout').innerHTML = `Speed <b>${km} km/h</b> · Spin <b>${sp}</b>`;
+      client.send({ t: 'throw', speed: r.speed, spin: r.spin, steer: r.steer || 0 });
+      const d = describe(r);
+      $('readout').innerHTML = `Speed <b>${d.km} km/h</b> · Spin <b>${d.sp}</b> · Swing <b>${d.dir}</b>`;
     },
     onHint: hint,
   });
 
+  function describe(r) {
+    const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
+    let dir = '—';
+    if (r.steerDeg !== null && r.steerDeg !== undefined) dir = Math.abs(r.steerDeg) < 2.5 ? 'straight' : (r.steerDeg > 0 ? '← ' : '→ ') + Math.abs(r.steerDeg).toFixed(0) + '°';
+    return { km: (r.speed * 3.6).toFixed(0), sp, dir };
+  }
   function hint(text) {
     setState(text, false);
     hintUntil = Date.now() + 2600;
@@ -126,7 +135,8 @@
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
     store.set('room', room); store.set('name', name); store.set('flip', $('flip').checked ? '1' : '0');
-    pad.det.flipSpin = $('flip').checked;
+    store.set('steer', $('steer').value); store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
+    pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
     client.connect(room, { t: 'hello', id: cid, name });

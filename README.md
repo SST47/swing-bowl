@@ -17,6 +17,7 @@ Wii-style motion bowling that runs in the browser. A laptop or TV shows the lane
 - **Position / aim:** ◀ ▶ to move along the foul line, ↖ ↗ to angle the throw.
 - **Power:** while you hold the button, the phone samples `DeviceMotionEvent.rotationRate`. Release speed comes from the peak rotation rate in the last 0.6 s before you let go. It doesn't depend on orientation, so any grip works.
 - **Hook:** wrist twist around the phone's long axis (`rotationRate.gamma`) in the last 0.35 s, integrated into degrees. It has a dead zone, and lefties can flip its sign in settings.
+- **Direction:** the swing plane of the forward swing is compared with the backswing's in world coordinates. Swing straight back and through and the ball follows the aim arrow. Pull across your body and it goes left or right (*Swing steers the ball*: off/low/normal/high, plus a flip option). This uses the fused `deviceorientation` stream converted to rotation matrices, not raw gyro axes, and removes wrist twist first, so hooking the ball doesn't change its direction.
 - **Fallback:** if there are no motion sensors (desktop browser, permission denied), the button switches to "hold to charge, slide to spin".
 
 Keyboard on the big screen: `←` `→` move · `↑` `↓` aim · `Q` `E` spin · hold `Space` for power · `N` new game · `M` mute.
@@ -52,7 +53,7 @@ js/net.js      screen/phone link over public MQTT brokers (WebSockets)
 tests/         node tests for scoring and physics
 ```
 
-Run the tests with `node tests/engine.test.js`.
+Run the tests with `node tests/engine.test.js` and `node tests/motion.test.js` (simulated swings, checks the direction estimate).
 
 ## Ideas
 

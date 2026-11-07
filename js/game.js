@@ -90,7 +90,8 @@
         case 'throw':
           if (!myTurn) return false;
           this.holding = null;
-          this.lane.throwBall({ x: p.startX, aim: p.aim, speed: msg.speed, spin: msg.spin || 0 });
+          const steer = clamp(+msg.steer || 0, -0.09, 0.09);
+          this.lane.throwBall({ x: p.startX, aim: p.aim + steer, speed: msg.speed, spin: msg.spin || 0 });
           this.state = 'rolling';
           this.lastThrow = { speed: msg.speed, spin: msg.spin || 0 };
           this._renderTurn();
