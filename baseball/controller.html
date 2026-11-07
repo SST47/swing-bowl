@@ -20,7 +20,7 @@
   <div class="readout" id="readout"></div>
   <div class="readout" id="tally"></div>
   <div class="holdwrap">
-    <button class="hold" id="hold" disabled><span class="lbl">HOLD &amp; SWING</span><small>hold = batting stance</small></button>
+    <button class="hold" id="hold" disabled><span class="lbl">READY</span><small>tap, then just swing</small></button>
   </div>
 </div>
 
@@ -33,7 +33,7 @@
     <label><input type="checkbox" id="lefty"> I bat left-handed</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to bat: hold the phone like a bat handle. Press and <b>hold</b> the big button. That's your stance, and it tells the pitcher you're ready. Watch the big screen and swing as the ball reaches the plate. Swing early to pull it, late to go the other way, and swing hard to hit it far. Keep a tight grip!</p>
+    <p style="font-size:13px">How to bat: grip the phone like a bat handle, tight. Tap <b>READY</b> when it's your turn, then watch the big screen and just <b>swing</b>. No buttons while you swing. Swing when the ring around the ball closes. Early pulls it, late goes the other way, and a fast swing goes far.</p>
   </div>
 </div>
 
@@ -68,17 +68,17 @@
     },
   });
 
-  const pad = SB.setupSwing({
-    button: $('hold'), meter: $('meter'), minPeak: 220, fullPeak: 1100,
-    labels: { hold: 'HOLD & SWING', sub: 'hold = batting stance', tapSub: 'release to swing' },
+  // Auto mode: no holding while you swing. Every fast swing on your turn is sent,
+  // stamped with the moment of peak bat speed on the big screen's clock.
+  const pad = SB.makeSwingPad({
+    mode: 'auto', button: $('hold'), meter: $('meter'), minPeak: 350, fullPeak: 1000,
+    labels: { hold: 'READY', sub: 'tap, then just swing', tapHold: 'SWING', tapSub: 'tap and let go to swing' },
     canSwing: () => !!(st && st.yourTurn),
-    onArm: on => client.send({ t: 'arm', on, lefty: $('lefty').checked }),
+    onArm: () => { client.send({ t: 'arm', on: true, lefty: $('lefty').checked }); setState('Ready! Watch the screen and swing.', true); },
     onSwing: r => {
-      // send the moment of the swing on the big screen's clock, so relay delay doesn't ruin the timing
       const at = client.synced ? client.hostTime(r.peakT) : null;
-      client.send({ t: 'swing', power: r.tap ? 0.85 : r.power, at, lefty: $('lefty').checked });
-      $('readout').innerHTML = `Bat speed <b>${Math.round((r.tap ? 0.85 : r.power) * 100)}%</b>`;
-      // stay in the stance for the next pitch: re-arm automatically when the button is still down
+      client.send({ t: 'swing', power: r.power, at, lefty: $('lefty').checked });
+      $('readout').innerHTML = `Bat speed <b>${Math.round(r.power * 100)}%</b>`;
     },
     onHint: hint,
   });
@@ -106,7 +106,7 @@
     const cur = st.players[st.cur];
     if (st.queued) setState('You’re in! You’ll bat in the next derby.');
     else if (st.over) setState('Derby over! Ask the big screen for a new one.');
-    else if (st.yourTurn) setState(st.pitching ? 'Here it comes… SWING!' : `You’re up! ${st.swingsLeft} swings left. Hold the button.`, true);
+    else if (st.yourTurn) setState(st.pitching ? 'Here it comes… swing!' : `You’re up! ${st.swingsLeft} swings left. Tap READY, then swing.`, true);
     else if (cur) setState(`${cur.name} is batting…`);
   }
 

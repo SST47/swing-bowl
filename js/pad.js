@@ -1,9 +1,9 @@
-/* Swing Bowl — shared touch-controller logic for the phone pages. */
+/* Swing Sports — shared phone-controller logic: the swing button, sensors and small helpers. */
 (function (root) {
   'use strict';
-  const { SwingDetector, FULL_PEAK } = root.SB;
+  const { SwingDetector } = root.SB;
 
-  // Press-and-hold auto-repeat for the position / aim buttons.
+  // Press-and-hold auto-repeat for small buttons (position, club).
   function repeatButton(btn, fn) {
     let timer = null, delay = null;
     const stop = () => { clearTimeout(delay); clearInterval(timer); timer = delay = null; };
@@ -16,153 +16,141 @@
   }
 
   /*
-   * Wire up the big HOLD button.
-   * opts: { button, meter, canThrow(), onHold(on), onThrow({speed, spin, ...}), onHint(text), onNewGame?() }
+   * The big swing button + motion sensors, for every game.
+   *
+   * opts: {
+   *   mode: 'release' (bowling: hold, swing, let go)
+   *       | 'impact'  (golf: hold, swing; the hit fires itself at the fastest point of the forward swing)
+   *       | 'auto'    (baseball: no holding; every fast swing on your turn is sent; the button means "ready"),
+   *   button, meter, minPeak, fullPeak,
+   *   canSwing()        is it this player's turn?
+   *   onArm(on)         button down/up (release, impact) or ready tap (auto)
+   *   onSwing(result)   release: { speed, spin, steer, steerDeg }  impact/auto: { power, peakT, twist, dirDeg, tap }
+   *   onHint(text)
+   *   isOver?(), onNewGame?()   when the game is over the button becomes "new game"
+   *   labels?: { hold, sub, tapHold, tapSub, over, overSub }
+   * }
    */
-  function setupHold(opts) {
-    const det = new SwingDetector();
-    let tapMode = false, down = false, pressT = 0, startX = 0, curX = 0, raf = 0;
+  function makeSwingPad(opts) {
+    const mode = opts.mode || 'release';
     const btn = opts.button, meter = opts.meter;
     const label = btn.querySelector('.lbl'), sub = btn.querySelector('small');
+    const L = Object.assign({
+      hold: 'HOLD & SWING', sub: mode === 'release' ? 'let go to throw' : 'swing through',
+      tapHold: 'HOLD', tapSub: mode === 'release' ? 'release to throw · slide to spin' : 'release to swing · slide to curve',
+      over: 'NEW GAME', overSub: 'tap to play again',
+    }, opts.labels || {});
+    let tapMode = false, down = false, pressT = 0, startX = 0, curX = 0, raf = 0;
 
+    const det = new SwingDetector({
+      mode, minPeak: opts.minPeak, fullPeak: opts.fullPeak,
+      onImpact: r => {
+        if (mode === 'auto') { if (opts.canSwing()) opts.onSwing(r); return; }
+        if (!down) return;
+        finish();
+        opts.onSwing(r);
+      },
+    });
+
+    const isOver = () => !!(opts.isOver && opts.isOver());
     function setLabels() {
-      if (opts.isOver && opts.isOver()) { label.textContent = 'NEW GAME'; sub.textContent = 'tap to play again'; return; }
-      label.textContent = tapMode ? 'HOLD' : 'HOLD & SWING';
-      sub.textContent = tapMode ? 'release to throw · slide to spin' : 'let go to throw';
+      if (isOver()) { label.textContent = L.over; sub.textContent = L.overSub; return; }
+      label.textContent = tapMode ? L.tapHold : L.hold;
+      sub.textContent = tapMode ? L.tapSub : L.sub;
     }
 
     async function enable() {
       const perm = await SwingDetector.requestPermission();
       det.start();
+      if (mode === 'auto') det.begin();   // always listening for swings
       setTimeout(() => {
-        if (!det.available) {
-          tapMode = true;
-          setLabels();
-          opts.onHint(perm === 'denied'
-            ? 'Motion access was denied, so you’re in tap mode. To swing for real: Settings › Safari › Motion & Orientation Access, then reload.'
-            : 'No motion sensors found, so you’re in tap mode: hold to charge, release to throw.');
-        }
+        if (det.available) return;
+        tapMode = true; setLabels();
+        opts.onHint(perm === 'denied'
+          ? 'Motion access was denied, so you’re in tap mode. To swing for real: Settings › Safari › Motion & Orientation Access, then reload.'
+          : 'No motion sensors found, so you’re in tap mode.');
       }, 1500);
       setLabels();
-      return perm;
+      if (mode === 'auto') meterLoop();
     }
 
-    function loop() {
-      if (!down) { meter.style.width = '0%'; return; }
-      let v;
-      if (tapMode) v = Math.min(1, (performance.now() - pressT) / 1400);
-      else v = Math.min(1, det.live / FULL_PEAK);
-      meter.style.width = (v * 100).toFixed(0) + '%';
-      raf = requestAnimationFrame(loop);
+    // Live swing-speed bar: while the button is held, or all the time in auto mode.
+    function meterLoop() {
+      cancelAnimationFrame(raf);
+      const tick = () => {
+        let v = 0;
+        if (tapMode) v = down ? Math.min(1, (performance.now() - pressT) / 1400) : 0;
+        else if (down || mode === 'auto') v = Math.min(1, det.live / (det.fullPeak || 900));
+        meter.style.width = (v * 100).toFixed(0) + '%';
+        if (down || mode === 'auto') raf = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    function finish() {
+      down = false;
+      btn.classList.remove('down');
+      if (mode !== 'auto') det.end();
+      if (opts.onArm && mode !== 'auto') opts.onArm(false);
     }
 
     btn.addEventListener('pointerdown', e => {
       e.preventDefault();
-      if (opts.isOver && opts.isOver()) { if (opts.onNewGame) opts.onNewGame(); return; }
-      if (!opts.canThrow()) return;
+      if (isOver()) { if (opts.onNewGame) opts.onNewGame(); return; }
+      if (!opts.canSwing()) return;
+      if (mode === 'auto' && !tapMode) { if (opts.onArm) opts.onArm(true); btn.classList.add('down'); setTimeout(() => btn.classList.remove('down'), 150); return; }
       try { btn.setPointerCapture(e.pointerId); } catch (_) {}
       down = true; pressT = performance.now(); startX = curX = e.clientX;
       btn.classList.add('down');
-      det.hold();
-      opts.onHold(true);
-      cancelAnimationFrame(raf); loop();
+      if (mode !== 'auto') det.begin();
+      if (opts.onArm) opts.onArm(true);
+      meterLoop();
     });
     btn.addEventListener('pointermove', e => { if (down) curX = e.clientX; });
 
-    const finish = (cancelled) => {
+    const up = () => {
       if (!down) return;
-      down = false;
-      btn.classList.remove('down');
-      opts.onHold(false);
-      if (cancelled) { det.holding = false; return; }
-      let res;
+      const held = performance.now() - pressT, slide = curX - startX;
       if (tapMode) {
-        const p = Math.min(1, (performance.now() - pressT) / 1400);
-        res = { ok: p > 0.08, reason: 'weak', speed: 3 + p * 7.5, spin: Math.max(-1, Math.min(1, -(curX - startX) / 110)) };
-      } else res = det.release();
-      if (res.ok) opts.onThrow(res);
-      else if (res.reason === 'weak') opts.onHint(tapMode ? 'Hold a little longer.' : 'Swing your arm harder, then let go during the swing.');
-      else opts.onHint('No motion data yet. Give it a second, or check Motion & Orientation access.');
+        finish();
+        const p = Math.min(1, held / 1400);
+        if (mode !== 'auto' && p < 0.08) { opts.onHint('Hold a little longer.'); return; }
+        if (mode === 'release') opts.onSwing({ ok: true, speed: 3 + p * 7.5, spin: Math.max(-1, Math.min(1, -slide / 110)), steer: 0, steerDeg: null, tap: true });
+        else opts.onSwing({ power: mode === 'auto' ? 0.85 : p, peakT: performance.now(), twist: -slide / 110 * 60, dirDeg: null, tap: true });
+        return;
+      }
+      if (mode === 'release') {
+        finish();
+        const res = det.release();
+        if (res.ok) opts.onSwing(res);
+        else opts.onHint(res.reason === 'weak' ? 'Swing your arm harder, then let go during the swing.' : 'No motion data yet. Give it a second, or check Motion & Orientation access.');
+        return;
+      }
+      // impact: a forward-only swing still counts when the button comes up
+      if (det.flush()) return;
+      finish();
+      opts.onHint('Take the club back, then swing through while holding the button.');
     };
-    btn.addEventListener('pointerup', () => finish(false));
-    btn.addEventListener('pointercancel', () => finish(false));
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
 
     // Keep iOS from scrolling / zooming while swinging.
     document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
     document.addEventListener('gesturestart', e => e.preventDefault());
 
-    return { det, enable, setLabels, get tapMode() { return tapMode; } };
-  }
-
-  /*
-   * Impact-mode button (golf, baseball): hold it, swing, and the hit fires at the
-   * fastest point of the swing. Tap mode (no sensors): hold to charge, release to hit.
-   * opts: { button, meter, minPeak, fullPeak, canSwing(), onArm(on), onSwing(result), onHint(text), labels:{hold, sub, tapSub} }
-   * result: { power, peakT, twist, dirDeg, tap }
-   */
-  function setupSwing(opts) {
-    const det = new SwingDetector();
-    let tapMode = false, down = false, pressT = 0, raf = 0, startX = 0, curX = 0;
-    const btn = opts.button, meter = opts.meter;
-    const label = btn.querySelector('.lbl'), sub = btn.querySelector('small');
-    const L = Object.assign({ hold: 'HOLD & SWING', sub: 'swing through the ball', tapSub: 'release to hit · slide to curve' }, opts.labels || {});
-    const setLabels = () => { label.textContent = tapMode ? 'HOLD' : L.hold; sub.textContent = tapMode ? L.tapSub : L.sub; };
-    det.watchImpact({
-      minPeak: opts.minPeak || 150, fullPeak: opts.fullPeak || 900,
-      onImpact: r => { if (!down) return; finish(); opts.onSwing(r); },
-    });
-
-    async function enable() {
-      const perm = await SwingDetector.requestPermission();
-      det.start();
-      setTimeout(() => {
-        if (!det.available) {
-          tapMode = true; setLabels();
-          opts.onHint(perm === 'denied'
-            ? 'Motion access was denied, so you’re in tap mode. To swing for real: Settings › Safari › Motion & Orientation Access, then reload.'
-            : 'No motion sensors found, so you’re in tap mode: hold to charge, release to hit.');
-        }
-      }, 1500);
-      setLabels();
-    }
-    function loop() {
-      if (!down) { meter.style.width = '0%'; return; }
-      const v = tapMode ? Math.min(1, (performance.now() - pressT) / 1400) : Math.min(1, det.live / (opts.fullPeak || 900));
-      meter.style.width = (v * 100).toFixed(0) + '%';
-      raf = requestAnimationFrame(loop);
-    }
-    function finish() { down = false; btn.classList.remove('down'); det.holding = false; opts.onArm(false); }
-
-    btn.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      if (!opts.canSwing()) return;
-      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-      down = true; pressT = performance.now(); startX = curX = e.clientX;
-      btn.classList.add('down');
-      det.hold();
-      opts.onArm(true);
-      cancelAnimationFrame(raf); loop();
-    });
-    btn.addEventListener('pointermove', e => { if (down) curX = e.clientX; });
-    const up = () => {
-      if (!down) return;
-      const held = performance.now() - pressT;
-      finish();
-      if (tapMode) {
-        const p = Math.min(1, held / 1400);
-        if (p < 0.08) { opts.onHint('Hold a little longer.'); return; }
-        opts.onSwing({ power: p, peakT: performance.now(), twist: -(curX - startX) / 110 * 60, dirDeg: null, tap: true });
-      } else opts.onHint('Keep holding the button while you swing. The hit happens by itself.');
+    return {
+      det, enable, setLabels,
+      setThresholds: (min, full) => det.setThresholds(min, full),
+      get tapMode() { return tapMode; },
     };
-    btn.addEventListener('pointerup', up);
-    btn.addEventListener('pointercancel', up);
-    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-    document.addEventListener('gesturestart', e => e.preventDefault());
-    return { det, enable, setLabels, get tapMode() { return tapMode; }, get armed() { return down; } };
   }
 
   async function keepAwake() {
-    try { if (navigator.wakeLock) { let l = await navigator.wakeLock.request('screen'); document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible') { try { l = await navigator.wakeLock.request('screen'); } catch (e) {} } }); } } catch (e) {}
+    try {
+      if (!navigator.wakeLock) return;
+      await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible') { try { await navigator.wakeLock.request('screen'); } catch (e) {} } });
+    } catch (e) {}
   }
 
   /*
@@ -185,5 +173,5 @@
     set(k, v) { try { localStorage.setItem('sb-' + k, v); } catch (e) {} },
   };
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, setupHold, setupSwing, keepAwake, store, clearUndo });
+  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo });
 })(self);

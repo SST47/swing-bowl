@@ -1,11 +1,19 @@
 /*
- * Swing Bowl — turns iPhone/Android motion sensors into a bowling throw.
+ * Swing Sports — turns iPhone/Android motion sensors into swings.
  *
- * Hold the on-screen button, swing your arm, let go at the bottom of the swing.
- *  - Power: how fast the phone is rotating just before release
- *    (orientation-independent, so any grip works).
- *  - Spin (hook): wrist twist around the phone's long axis in the last
- *    ~0.35 s before release.
+ * One SwingDetector, three ways a swing can end:
+ *  - 'release' (bowling): hold the button, swing, let go to throw. The throw is
+ *    read from the last ~0.6 s before the button comes up.
+ *  - 'impact'  (golf): hold the button, take the club back, swing through. The
+ *    hit fires by itself at the fastest point of the FORWARD swing, i.e. the
+ *    first fast rotation that goes the opposite way to the backswing. (A pause
+ *    at the top of the backswing never counts as the hit.)
+ *  - 'auto'    (baseball): no button at all. The first fast rotation is the
+ *    swing, timestamped at its peak; then it re-arms for the next pitch.
+ *
+ * What a swing measures:
+ *  - Power: peak rotation speed (orientation-independent, so any grip works).
+ *  - Spin / curve: wrist twist around the phone's long axis near the peak.
  *  - Direction: which way the arm swings. We compare the swing plane of the
  *    forward swing with the backswing, measured in world coordinates. Swing
  *    straight back and through and the ball follows your aim arrow; pull the
@@ -117,23 +125,31 @@
     return Math.max(-0.09, Math.min(0.09, steer));
   }
 
+  const AUTO_COOLDOWN_MS = 800;
+  const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
   class SwingDetector {
-    constructor() {
-      this.samples = [];
-      this.oSamples = [];
-      this.holding = false;
-      this.available = false;
-      this.orientationAvailable = false;
+    /*
+     * opts: { mode: 'release' | 'impact' | 'auto', minPeak, fullPeak (deg/s), onImpact(result) }
+     * impact/auto result: { power 0..1, peak, peakT (performance.now ms), twist (deg), dirDeg | null }
+     */
+    constructor(opts = {}) {
+      this.mode = opts.mode || 'release';
+      this.minPeak = opts.minPeak ?? MIN_PEAK;
+      this.fullPeak = opts.fullPeak ?? FULL_PEAK;
+      this.onImpact = opts.onImpact || null;
+      this.flipSpin = false; this.steerLevel = 'normal'; this.flipSteer = false;
+      this.available = false; this.orientationAvailable = false;
       this.live = 0;
-      this.flipSpin = false;
-      this.steerLevel = 'normal';
-      this.flipSteer = false;
+      this.recording = false;
       this._prevR = null; this._prevT = 0;
+      this._reset();
       this._onMotion = this._onMotion.bind(this);
       this._onOrient = this._onOrient.bind(this);
     }
 
-    // Must be called from a tap/click on iOS (Safari asks the user).
+    // Must be called from a tap/click on iOS (Safari asks the user once for both).
     static async requestPermission() {
       if (typeof DeviceMotionEvent === 'undefined') return 'unsupported';
       let res = 'granted';
@@ -146,27 +162,41 @@
       return res;
     }
 
-    start() {
-      root.addEventListener('devicemotion', this._onMotion);
-      root.addEventListener('deviceorientation', this._onOrient);
-    }
-    stop() {
-      root.removeEventListener('devicemotion', this._onMotion);
-      root.removeEventListener('deviceorientation', this._onOrient);
+    start() { root.addEventListener('devicemotion', this._onMotion); root.addEventListener('deviceorientation', this._onOrient); }
+    stop() { root.removeEventListener('devicemotion', this._onMotion); root.removeEventListener('deviceorientation', this._onOrient); }
+    setThresholds(minPeak, fullPeak) { this.minPeak = minPeak; this.fullPeak = fullPeak; }
+
+    // Start / stop recording a swing.
+    begin() { this._reset(); this.recording = true; }
+    end() { this.recording = false; }
+
+    _reset() {
+      this.samples = []; this.oSamples = [];
+      this.seg = { axis: null, acc: [0, 0, 0], n: 0, list: [], cur: null };
+      this.auto = { peak: 0, peakT: 0 };
+      this.fired = false;
+      this.cooldownUntil = 0;
     }
 
+    // ---------- sensor input ----------
     _onMotion(e) {
       const r = e.rotationRate;
       if (!r || r.alpha === null || r.alpha === undefined) return;
+      this.feed(performance.now(), r.alpha || 0, r.beta || 0, r.gamma || 0);
+    }
+
+    // One gyro sample (deg/s around the device's z, x, y axes). Public so tests can drive it.
+    feed(t, alpha, beta, gamma) {
       this.available = true;
-      const a = r.alpha || 0, b = r.beta || 0, g = r.gamma || 0;
-      const mag = Math.sqrt(a * a + b * b + g * g);
+      const v = [beta, gamma, alpha];   // device x, y, z
+      const mag = Math.hypot(v[0], v[1], v[2]);
       this.live = this.live * 0.6 + mag * 0.4;
-      if (!this.holding) return;
-      const t = performance.now();
-      this.samples.push({ t, g, mag });
+      if (!this.recording) return;
+      const s = { t, v, mag, g: gamma, r: mag };
+      this.samples.push(s);
       while (this.samples.length && t - this.samples[0].t > 2500) this.samples.shift();
-      this._checkImpact(t, mag);
+      if (this.mode === 'impact') { this._segment(s); this._detectImpact(s); }
+      else if (this.mode === 'auto') this._detectAuto(s);
     }
 
     _onOrient(e) {
@@ -176,47 +206,94 @@
       const R = orientationMatrix(e.alpha, e.beta, e.gamma);
       const P = this._prevR, dt = (t - this._prevT) / 1000;
       this._prevR = R; this._prevT = t;
-      if (!P || dt <= 0.002 || dt > 0.2 || !this.holding) return;
+      if (!P || dt <= 0.002 || dt > 0.2 || !this.recording) return;
       this.oSamples.push(rateSample(t, R, P, dt));
       while (this.oSamples.length && t - this.oSamples[0].t > 2500) this.oSamples.shift();
     }
 
-    hold() { this.holding = true; this.samples = []; this.oSamples = []; this._ipeak = 0; this._ifired = false; }
+    // ---------- 'impact': split the motion into back / forward segments ----------
+    // The first real motion fixes a reference axis (the backswing). Every sample
+    // gets a signed rate along it; a sign change starts a new segment.
+    _segment(s) {
+      const S = this.seg, axisMin = Math.min(60, this.minPeak * 0.6);
+      if (!S.axis) {
+        if (s.mag < axisMin) return;
+        S.acc = [S.acc[0] + s.v[0], S.acc[1] + s.v[1], S.acc[2] + s.v[2]];
+        if (++S.n >= 3) S.axis = norm(S.acc);
+      }
+      s.r = S.axis ? dot(s.v, S.axis) : s.mag;
+      const sign = s.r >= 0 ? 1 : -1;
+      if (!S.cur) S.cur = { sign: 1, peak: 0, maxMag: 0, peakT: s.t, start: s.t };
+      else if (sign !== S.cur.sign && Math.abs(s.r) > Math.max(15, axisMin * 0.4)) {
+        S.list.push(S.cur);
+        S.cur = { sign, peak: 0, maxMag: 0, peakT: s.t, start: s.t };
+      }
+      const c = S.cur;
+      if (Math.abs(s.r) > c.peak) { c.peak = Math.abs(s.r); c.peakT = s.t; }
+      c.maxMag = Math.max(c.maxMag, s.mag);
+    }
 
-    /*
-     * Impact mode (golf, baseball): while the button is held, the hit happens by
-     * itself at the fastest point of the swing — no need to let go on time.
-     * opts: { minPeak (deg/s), fullPeak (deg/s), onImpact(result) }
-     * result: { power 0..1, peak, peakT (performance.now ms), twist (deg), dirDeg|null }
-     */
-    watchImpact(opts) { this.impact = opts; }
+    _detectImpact(s) {
+      if (this.fired) return;
+      const S = this.seg, cur = S.cur;
+      if (!cur) return;
+      const back = S.list[0];
+      if (!back) return;                       // still on the backswing
+      const forward = c => c && c !== back && c.sign !== back.sign;
+      // forward swing peaked and is slowing down...
+      if (forward(cur) && cur.peak >= this.minPeak && Math.abs(s.r) < cur.peak * 0.5) return this._fire(cur, s.t);
+      // ...or it already reversed again (a quick recoil) before slowing much
+      const last = S.list[S.list.length - 1];
+      if (cur.start === s.t && forward(last) && last.peak >= this.minPeak) this._fire(last, s.t);
+    }
 
-    _checkImpact(t, mag) {
-      const o = this.impact;
-      if (!o || this._ifired || !this.holding) return;
-      if (mag > this._ipeak) { this._ipeak = mag; this._ipeakT = t; }
-      if (this._ipeak >= o.minPeak && mag < this._ipeak * 0.55) {
-        this._ifired = true;
-        const peak = this._ipeak, peakT = this._ipeakT;
-        let twist = 0;
-        const s = this.samples;
-        for (let i = 1; i < s.length; i++) if (s[i].t >= peakT - 250) twist += s[i].g * (s[i].t - s[i - 1].t) / 1000;
-        const dir = swingDirection(this.oSamples, t);
-        const power = Math.max(0, Math.min(1, (peak - o.minPeak) / (o.fullPeak - o.minPeak)));
-        o.onImpact({ power, peak, peakT, twist, dirDeg: dir.ok ? dir.deg : null });
+    // Button let go before a hit fired: a forward-only swing (no backswing) still counts.
+    flush() {
+      if (this.fired || this.mode !== 'impact') return false;
+      const segs = this.seg.list.concat(this.seg.cur ? [this.seg.cur] : []);
+      let best = null;
+      for (const c of segs) if (c.peak >= this.minPeak && (!best || c.maxMag > best.maxMag)) best = c;
+      if (!best) return false;
+      this._fire(best, performance.now());
+      return true;
+    }
+
+    // ---------- 'auto': first fast rotation = the swing; re-arm after a cooldown ----------
+    _detectAuto(s) {
+      if (s.t < this.cooldownUntil) return;
+      const A = this.auto;
+      if (s.mag > A.peak) { A.peak = s.mag; A.peakT = s.t; }
+      if (A.peak >= this.minPeak && s.mag < A.peak * 0.5) {
+        this._fire({ maxMag: A.peak, peakT: A.peakT }, s.t);
+        this.fired = false;                  // auto mode keeps listening
+        this.cooldownUntil = s.t + AUTO_COOLDOWN_MS;
+        this.auto = { peak: 0, peakT: 0 };
+      } else if (A.peak < this.minPeak && s.t - A.peakT > 400) {
+        this.auto = { peak: s.mag, peakT: s.t };   // forget slow fidgeting
       }
     }
 
+    _fire(seg, t) {
+      this.fired = true;
+      const peak = seg.maxMag, peakT = seg.peakT;
+      let twist = 0;
+      const S = this.samples;
+      for (let i = 1; i < S.length; i++) if (S[i].t >= peakT - 250 && S[i].t <= t) twist += S[i].g * (S[i].t - S[i - 1].t) / 1000;
+      const dir = swingDirection(this.oSamples, t);
+      const power = Math.max(0, Math.min(1, (peak - this.minPeak) / (this.fullPeak - this.minPeak)));
+      if (this.onImpact) this.onImpact({ power, peak, peakT, twist, dirDeg: dir.ok ? dir.deg : null });
+    }
+
+    // ---------- 'release' (bowling): read the throw from the moment the button came up ----------
     // Returns { ok, speed (m/s), spin (-1..1), steer (rad), steerDeg, peak, twist } or { ok:false, reason }
     release() {
-      this.holding = false;
+      this.recording = false;
       const now = performance.now();
       const win = this.samples.filter(s => now - s.t <= WINDOW_MS);
       if (win.length < 3) return { ok: false, reason: 'nodata' };
       let peak = 0;
       for (const s of win) peak = Math.max(peak, s.mag);
       if (peak < MIN_PEAK) return { ok: false, reason: 'weak', peak };
-
       let twist = 0;
       for (let i = 1; i < win.length; i++) {
         if (now - win[i].t > TWIST_MS) continue;

@@ -55,13 +55,13 @@
   let info = null, hintTimer = 0;
   const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
 
-  const pad = SB.setupHold({
-    button: $('hold'), meter: $('meter'),
-    canThrow: () => !!(info && info.state === 'aim' && !info.over),
+  const pad = SB.makeSwingPad({
+    mode: 'release', button: $('hold'), meter: $('meter'),
+    canSwing: () => !!(info && info.state === 'aim' && !info.over),
     isOver: () => !!(info && info.over),
     onNewGame: () => app.newGame(),
-    onHold: on => app.input(0, { t: 'hold', on }),
-    onThrow: r => {
+    onArm: on => app.input(0, { t: 'hold', on }),
+    onSwing: r => {
       app.input(0, { t: 'throw', speed: r.speed, spin: r.spin, steer: r.steer || 0 });
       const d = describe(r);
       showInfo(`${d.km} km/h · spin ${d.sp} · swing ${d.dir}`);

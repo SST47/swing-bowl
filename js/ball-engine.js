@@ -21,10 +21,10 @@
   };
 
   const PITCHES = [
-    { id: 'FB', name: 'Fastball',  speed: [33, 37], brk: [0, -0.05], weight: 5 },
-    { id: 'CH', name: 'Changeup',  speed: [26, 29], brk: [0.05, -0.25], weight: 2 },
-    { id: 'CB', name: 'Curveball', speed: [27, 30], brk: [-0.35, -0.45], weight: 2 },
-    { id: 'SL', name: 'Slider',    speed: [30, 33], brk: [-0.4, -0.12], weight: 2 },
+    { id: 'FB', name: 'Fastball',  speed: [25, 28.5], brk: [0, -0.05], weight: 5 },
+    { id: 'CH', name: 'Changeup',  speed: [20, 22], brk: [0.05, -0.2], weight: 2 },
+    { id: 'CB', name: 'Curveball', speed: [21, 23.5], brk: [-0.3, -0.35], weight: 2 },
+    { id: 'SL', name: 'Slider',    speed: [23, 25.5], brk: [-0.32, -0.1], weight: 2 },
   ];
   const ZONE = { x: 0.22, y0: 0.5, y1: 1.05 };
   const RELEASE = { x: 0.45, y: 1.85, z: 17.2 };
@@ -60,7 +60,7 @@
    * power: 0..1 swing speed; lefty: bats left-handed; rng optional.
    * Returns { kind: 'miss' | 'foul' | 'fair', ev (m/s), la (rad), spray (rad), quality }
    */
-  const WINDOW = 0.13, FOUL_WINDOW = 0.2;
+  const WINDOW = 0.2, FOUL_WINDOW = 0.28;
   function contact(dt, power, pitch, lefty, rng) {
     rng = rng || Math.random;
     const a = Math.abs(dt);
@@ -72,10 +72,10 @@
     }
     let q = 1 - (a / WINDOW) ** 2;
     // chasing a pitch out of the zone makes for weaker contact
-    if (pitch && !pitch.inZone) q *= 0.7;
-    const ev = (22 + 26 * Math.max(0, Math.min(1, power))) * (0.45 + 0.55 * q);
-    let la = (-6 + 34 * q + rnd(rng, -11, 11)) * D2R;
-    if (q < 0.5 && rng() < 0.35) la = rnd(rng, 45, 70) * D2R;   // popped up
+    if (pitch && !pitch.inZone) q *= 0.8;
+    const ev = (30 + 22 * Math.max(0, Math.min(1, power))) * (0.55 + 0.45 * q);
+    let la = (-4 + 32 * q + rnd(rng, -10, 10)) * D2R;
+    if (q < 0.45 && rng() < 0.3) la = rnd(rng, 45, 70) * D2R;   // popped up
     const spray = (dt / WINDOW) * 42 * (-pull) * D2R + rnd(rng, -6, 6) * D2R;
     // dt < 0 (early) -> pull side
     return { kind: Math.abs(spray) > PARK.foul ? 'foul' : 'fair', ev, la, spray: Math.max(-1.3, Math.min(1.3, spray)), quality: q };

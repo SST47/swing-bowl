@@ -185,3 +185,8 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .club .nm b { display: block; font-size: 22px; }
 .club .nm small { color: var(--muted); }
 .green-bg { background: radial-gradient(900px 500px at 50% -10%, #1f5a2a, transparent), var(--bg); }
+
+/* ---------- baseball ---------- */
+.hud .pitchinfo .tbar { position: relative; width: 120px; height: 10px; margin: 6px auto 2px; border-radius: 99px; background: linear-gradient(90deg, #ff5a5f 0%, #ffd23f 30%, #3ddc97 43%, #3ddc97 57%, #ffd23f 70%, #ff5a5f 100%); }
+.hud .pitchinfo .tbar i { position: absolute; top: -4px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 6px #000; }
+.hud .pitchinfo small { display: block; color: var(--text); }

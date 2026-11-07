@@ -80,13 +80,13 @@
     },
   });
 
-  const pad = SB.setupHold({
-    button: $('hold'), meter: $('meter'),
-    canThrow: () => !!(st && st.yourTurn),
+  const pad = SB.makeSwingPad({
+    mode: 'release', button: $('hold'), meter: $('meter'),
+    canSwing: () => !!(st && st.yourTurn),
     isOver: () => !!(st && st.over),
     onNewGame: () => client.send({ t: 'newgame' }),
-    onHold: on => client.send({ t: 'hold', on }),
-    onThrow: r => {
+    onArm: on => client.send({ t: 'hold', on }),
+    onSwing: r => {
       client.send({ t: 'throw', speed: r.speed, spin: r.spin, steer: r.steer || 0 });
       const d = describe(r);
       $('readout').innerHTML = `Speed <b>${d.km} km/h</b> · Spin <b>${d.sp}</b> · Swing <b>${d.dir}</b>`;

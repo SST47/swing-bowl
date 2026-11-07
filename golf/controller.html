@@ -93,8 +93,9 @@
     return Math.max(-1, Math.min(1, s));
   }
 
-  const pad = SB.setupSwing({
-    button: $('hold'), meter: $('meter'), minPeak: 150, fullPeak: 900,
+  const pad = SB.makeSwingPad({
+    mode: 'impact', button: $('hold'), meter: $('meter'), minPeak: 150, fullPeak: 900,
+    labels: { sub: 'take it back, swing through' },
     canSwing: () => !!(st && st.yourTurn),
     onArm: on => client.send({ t: 'arm', on }),
     onSwing: r => {
@@ -130,8 +131,7 @@
     $('club').textContent = st.club || '—';
     $('clubinfo').textContent = st.putter ? `${st.dist} m to the hole` : `${(GOLF.CLUBS[st.clubIdx] || {}).target || ''} m full swing · ${st.dist} m to pin`;
     // a putting stroke is much gentler than a full swing
-    pad.det.impact.minPeak = st.putter ? 30 : 150;
-    pad.det.impact.fullPeak = st.putter ? 380 : 900;
+    if (st.putter) pad.setThresholds(30, 380); else pad.setThresholds(150, 900);
     $('hold').disabled = !st.yourTurn;
     $('prev').disabled = $('next').disabled = !st.yourTurn;
     if (Date.now() < hintUntil) return;

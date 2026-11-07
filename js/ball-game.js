@@ -5,7 +5,8 @@
   const { PARK, makePitch, pitchPos, contact, flight } = B;
   const COLORS = ['#3fa9f5', '#ff5a5f', '#ffd23f', '#3ddc97', '#c77dff', '#ff9f1c'];
   const SWINGS = 10;
-  const GRACE = 0.38;          // s after the ball crosses the plate that we still wait for a (delayed) swing message
+  const GRACE = 0.8;           // s after the ball crosses the plate that we still wait for a (delayed) swing message
+  const BIAS_MAX = 0.15;       // s of systematic lag (TV delay, clock-sync skew) we learn and take out
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => performance.now() / 1000;
   const D2R = Math.PI / 180;
@@ -67,6 +68,7 @@
       this.players = []; this.cur = 0; this.over = false; this.started = false;
       this.state = 'wait'; this.timer = 2.5; this.idle = 0;
       this.pitch = null; this.hit = null; this.armed = false; this.swingAnim = -1; this.lefty = false;
+      this.bias = 0;            // learned average lateness of swings in this room (s)
       this.crowd = Array.from({ length: 260 }, () => ({ t: (Math.random() * 2 - 1) * (PARK.foul + 0.15), h: Math.random(), c: ['#e8e8e8', '#ff6b6b', '#4dabf7', '#ffd43b', '#69db7c'][Math.floor(Math.random() * 5)] }));
       this._buildHud(hud);
       this.view.resize(); root.addEventListener('resize', () => this.view.resize());
@@ -148,7 +150,11 @@
       pt.judged = true;
       this.started = true;
       p.swings++;
-      const dt = at - pt.plateT;
+      // Learn the room's systematic lag (TV display delay, clock-sync skew) from swings near
+      // the ball, and take most of it out, so "on time" on screen counts as on time.
+      const raw = at - pt.plateT;
+      if (Math.abs(raw) < 0.45) this.bias = this.bias * 0.75 + raw * 0.25;
+      const dt = raw - Math.max(-BIAS_MAX, Math.min(BIAS_MAX, this.bias)) * 0.8;
       const c = contact(dt, power, pt.p, this.lefty);
       this.lastTiming = dt;
       if (c.kind === 'miss') {
@@ -332,6 +338,7 @@
       }
       if (pitching && this.pitch) {
         const u = Math.min(1.25, (now() - this.pitch.releaseT) / this.pitch.p.dur);
+        if (this.state === 'pitch' && u <= 1.05) this._timingRing(u);
         const bp = pitchPos(this.pitch.p, u);
         this._ball(bp);
       }
@@ -341,6 +348,21 @@
         this._ball(path[n]);
       } else if (this.state === 'result' && this.lastBall) this._ball(this.lastBall);
       this._batter();
+    }
+
+    // A ring around where the pitch will cross the plate, shrinking onto the ball
+    // exactly when it arrives: swing when the ring closes.
+    _timingRing(u) {
+      const v = this.view, ctx = v.ctx, tg = this.pitch.p.target;
+      const c = v.proj([tg.x, tg.y, 0]);
+      if (!c) return;
+      const r = (0.06 + 0.5 * Math.max(0, 1 - u)) * c.s;
+      const close = Math.abs(1 - u) < 0.12;
+      ctx.lineWidth = close ? 5 : 3;
+      ctx.strokeStyle = close ? 'rgba(61,220,151,0.95)' : `rgba(255,210,63,${0.35 + 0.5 * u})`;
+      ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath(); ctx.arc(c.x, c.y, 3, 0, Math.PI * 2); ctx.fill();
     }
 
     _ball(p) {
@@ -418,9 +440,13 @@
       this.el.bat.innerHTML = p ? `<b style="color:${p.color}">${esc(p.name)}</b> · ${p.hrs} HR<small>Swing ${Math.min(SWINGS, p.swings + (this.over ? 0 : 1))} of ${SWINGS}</small>` : '<b>HOME RUN DERBY</b><small>Waiting for batters</small>';
       const pt = this.pitch && this.pitch.p;
       let s = pt ? `${pt.type.name}<br><b>${Math.round(pt.speed * 3.6)} km/h</b>` : 'Pitch';
-      if (this.lastTiming !== undefined && this.state !== 'pitch') { const ms = Math.round(this.lastTiming * 1000); s += `<br>timing ${ms > 0 ? '+' : ''}${ms} ms`; }
+      if (this.lastTiming !== undefined && this.state !== 'pitch') {
+        const ms = Math.round(this.lastTiming * 1000);
+        const pos = Math.max(0, Math.min(100, 50 + ms / 300 * 50));
+        s += `<div class="tbar"><i style="left:${pos}%"></i></div><small>${Math.abs(ms) < 40 ? 'perfect!' : ms < 0 ? 'early ' + -ms + ' ms' : 'late ' + ms + ' ms'}</small>`;
+      }
       this.el.pitch.innerHTML = s;
-      this.el.turn.innerHTML = this.over ? 'Derby over' : p ? (this.state === 'wait' && !this.armed ? 'Hold the button on your phone to get ready' : this.state === 'windup' ? 'Here comes the pitch…' : '') : '';
+      this.el.turn.innerHTML = this.over ? 'Derby over' : p ? (this.state === 'wait' && !this.armed ? 'Tap READY on your phone, then swing it like a bat' : this.state === 'windup' ? 'Here comes the pitch…' : '') : '';
     }
     _renderBoard() {
       if (!this.players.length) { this.el.board.innerHTML = ''; return; }

@@ -14,12 +14,12 @@ let hr = 0, n = 2000, rng = Math.random;
 const outs = {};
 for (let i = 0; i < n; i++) {
   const p = B.makePitch(rng);
-  const c = B.contact((rng() - 0.5) * 0.2, 0.75 + rng() * 0.25, p, false, rng);
+  const c = B.contact((rng() - 0.5) * 0.24, 0.6 + rng() * 0.4, p, false, rng);
   if (c.kind === 'miss') { outs.miss = (outs.miss || 0) + 1; continue; }
   const f = B.flight(B.pitchPos(p, 1), c.ev, c.la, c.spray);
   outs[f.outcome] = (outs[f.outcome] || 0) + 1;
 }
-console.log('outcomes of 2000 decent swings (timing within ±0.1 s):', JSON.stringify(outs));
+console.log('outcomes of 2000 decent swings (timing within ±0.12 s, 60-100% bat speed):', JSON.stringify(outs), '→ HR rate', (100 * (outs.hr || 0) / n).toFixed(0) + '%');
 // perfect timing, hard swing should homer often
 let perfect = 0;
 for (let i = 0; i < 500; i++) { const p = B.makePitch(); const c = B.contact((Math.random() - 0.5) * 0.03, 1, { inZone: true }, false); const f = B.flight(B.pitchPos(p, 1), c.ev, c.la, c.spray); if (f.outcome === 'hr') perfect++; }
