@@ -98,10 +98,25 @@
     try { if (navigator.wakeLock) { let l = await navigator.wakeLock.request('screen'); document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible') { try { l = await navigator.wakeLock.request('screen'); } catch (e) {} } }); } } catch (e) {}
   }
 
+  /*
+   * iOS "Shake to Undo": once someone has typed into a text field, shaking the
+   * phone (i.e. swinging it!) pops up an "Undo Typing" dialog. The undo history
+   * belongs to those input elements, so swap each typed-in field for a fresh
+   * copy (same value) and drop focus; with nothing to undo, iOS shows nothing.
+   */
+  function clearUndo(container) {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    (container || document).querySelectorAll('input[type=text], input:not([type]), textarea').forEach(el => {
+      const fresh = el.cloneNode(true);
+      fresh.value = el.value;
+      el.replaceWith(fresh);
+    });
+  }
+
   const store = {
     get(k, d) { try { const v = localStorage.getItem('sb-' + k); return v === null ? d : v; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('sb-' + k, v); } catch (e) {} },
   };
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, setupHold, keepAwake, store });
+  root.SB = Object.assign(root.SB || {}, { repeatButton, setupHold, keepAwake, store, clearUndo });
 })(self);

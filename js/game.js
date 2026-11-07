@@ -79,10 +79,6 @@
           if (!myTurn) return false;
           p.startX = clamp(p.startX + (msg.d > 0 ? 1 : -1) * 0.035, -C.MAX_START_X, C.MAX_START_X);
           return true;
-        case 'aim':
-          if (!myTurn) return false;
-          p.aim = clamp(p.aim + (msg.d > 0 ? 1 : -1) * 0.006, -C.MAX_AIM, C.MAX_AIM);
-          return true;
         case 'hold':
           this.holding = msg.on && myTurn ? idx : null;
           this._renderTurn();
@@ -91,7 +87,7 @@
           if (!myTurn) return false;
           this.holding = null;
           const steer = clamp(+msg.steer || 0, -0.09, 0.09);
-          this.lane.throwBall({ x: p.startX, aim: p.aim + steer, speed: msg.speed, spin: msg.spin || 0 });
+          this.lane.throwBall({ x: p.startX, aim: steer, speed: msg.speed, spin: msg.spin || 0 });   // direction comes only from the swing
           this.state = 'rolling';
           this.lastThrow = { speed: msg.speed, spin: msg.spin || 0 };
           this._renderTurn();
@@ -129,7 +125,7 @@
       this.renderer.drawScene(this.lane, {
         ball: this.lane.ball || (aiming ? { x: p.startX, z: -0.25, dist: 0 } : null),
         ballColor: p ? p.color : COLORS[0],
-        aim: aiming ? { x: p.startX, aim: p.aim, color: p.color + 'cc' } : null,
+        aim: aiming ? { x: p.startX, aim: 0, color: p.color + '88' } : null,   // straight-line guide from the start position
       });
       if (this.state === 'rolling') this._renderPins();
       requestAnimationFrame(this._tick);

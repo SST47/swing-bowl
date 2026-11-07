@@ -179,7 +179,7 @@
       this.wallX(-LH - GW, 17.2, WALL_Z, 0.5, 0.62, '#ff3d7f');
       this.wallX(LH + GW, 17.2, WALL_Z, 0.5, 0.62, '#26c6da');
 
-      // aiming guide
+      // straight-line guide from the start position
       if (opts.aim) {
         const { x, aim, color } = opts.aim;
         const len = 7.5;

@@ -109,6 +109,7 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .pad .readout { display: flex; justify-content: center; gap: 18px; font-size: 14px; color: var(--muted); min-height: 20px; }
 .pad .readout b { color: var(--text); }
 .dpad { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dpad.single { grid-template-columns: 1fr; }
 .dpad .grp { background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 16px; padding: 8px; text-align: center; }
 .dpad .grp small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .1em; }
 .dpad .grp .row { justify-content: center; flex-wrap: nowrap; }

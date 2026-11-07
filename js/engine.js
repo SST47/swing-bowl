@@ -68,7 +68,7 @@
 
     throwBall({ x = 0, aim = 0, speed = 7, spin = 0 }) {
       speed = clamp(speed, C.MIN_SPEED, C.MAX_SPEED);
-      aim = clamp(aim, -C.MAX_AIM - 0.09, C.MAX_AIM + 0.09);   // arrow aim + swing direction
+      aim = clamp(aim, -C.MAX_AIM - 0.09, C.MAX_AIM + 0.09);   // launch angle from the swing
       this.ball = {
         x: clamp(x, -C.MAX_START_X, C.MAX_START_X), z: 0.15,
         vx: Math.sin(aim) * speed, vz: Math.cos(aim) * speed,

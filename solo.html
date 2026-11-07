@@ -16,18 +16,18 @@
 </div>
 <div class="soloinfo" id="info"></div>
 <div class="controls" id="controls">
-  <div class="grp"><small>Position</small><div class="row"><button id="left">◀</button><button id="right">▶</button></div><div class="meter" style="margin-top:6px;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden"><div id="meter" style="height:100%;width:0;background:linear-gradient(90deg,#3ddc97,#ffd23f,#ff3d7f)"></div></div></div>
-  <button class="hold" id="hold"><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button>
-  <div class="grp"><small>Aim</small><div class="row"><button id="aimL">↖</button><button id="aimR">↗</button></div></div>
+  <div class="grp"><small>Move</small><div class="row"><button id="left">◀</button></div></div>
+  <div><button class="hold" id="hold"><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button><div class="meter" style="margin-top:8px;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden"><div id="meter" style="height:100%;width:0;background:linear-gradient(90deg,#3ddc97,#ffd23f,#ff3d7f)"></div></div></div>
+  <div class="grp"><small>Move</small><div class="row"><button id="right">▶</button></div></div>
 </div>
 
 <div class="sheet" id="sheet">
   <div class="card">
     <h2>🎳 Solo bowling</h2>
-    <p>Your phone is both the lane and the ball. Hold the big button, swing the phone like a bowling ball, and let go of the button as your arm comes forward. Then watch the pins fly.</p>
+    <p>Your phone is both the lane and the ball. Hold the big button, swing the phone like a bowling ball, and let go of the button as your arm comes forward. The ball goes where you swing. Then watch the pins fly.</p>
     <p style="font-size:14px"><b>Grip it tight.</b> Don’t actually let go of the phone!</p>
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
-    <label>Swing steers the ball <select id="steer"><option value="off">Off</option><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+    <label>Swing sensitivity <select id="steer"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
     <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
     <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
     <button class="btn" id="go">Start &amp; enable motion</button>
@@ -49,6 +49,7 @@
   $('name').value = SB.store.get('name', '');
   $('flip').checked = SB.store.get('flip', '0') === '1';
   $('steer').value = SB.store.get('steer', 'normal');
+  if (!['low', 'normal', 'high'].includes($('steer').value)) $('steer').value = 'normal';
   $('flipSteer').checked = SB.store.get('flipSteer', '0') === '1';
 
   let info = null, hintTimer = 0;
@@ -83,8 +84,6 @@
 
   SB.repeatButton($('left'), () => app.input(0, { t: 'move', d: -1 }));
   SB.repeatButton($('right'), () => app.input(0, { t: 'move', d: 1 }));
-  SB.repeatButton($('aimL'), () => app.input(0, { t: 'aim', d: -1 }));
-  SB.repeatButton($('aimR'), () => app.input(0, { t: 'aim', d: 1 }));
 
   $('go').onclick = async () => {
     sfx.unlock();
@@ -92,6 +91,7 @@
     SB.store.set('name', name === 'You' ? '' : name); SB.store.set('flip', $('flip').checked ? '1' : '0');
     SB.store.set('steer', $('steer').value); SB.store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
     pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
+    SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
     await pad.enable();
     SB.keepAwake();
     if (!app.info().players.length) app.addPlayer(name);

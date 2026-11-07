@@ -19,9 +19,8 @@
   <div class="state" id="state">Not connected</div>
   <div class="meter"><div id="meter"></div></div>
   <div class="readout" id="readout"></div>
-  <div class="dpad">
-    <div class="grp"><small>Position</small><div class="row"><button id="left">◀</button><button id="right">▶</button></div></div>
-    <div class="grp"><small>Aim</small><div class="row"><button id="aimL">↖</button><button id="aimR">↗</button></div></div>
+  <div class="dpad single">
+    <div class="grp"><small>Starting position</small><div class="row"><button id="left">◀</button><button id="right">▶</button></div></div>
   </div>
   <div class="holdwrap">
     <button class="hold" id="hold" disabled><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button>
@@ -34,12 +33,12 @@
     <p>Enter the code on the big screen.</p>
     <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
-    <label>Swing steers the ball <select id="steer"><option value="off">Off</option><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+    <label>Swing sensitivity <select id="steer"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
     <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
     <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. Swing straight to follow the aim arrow, or pull your swing left or right to steer. Twist your wrist at release for a hook.</p>
+    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. The ball goes where you swing: straight through for straight, pull left or right to send it that way. Twist your wrist at release for a hook.</p>
   </div>
 </div>
 
@@ -61,6 +60,7 @@
   $('name').value = store.get('name', '');
   $('flip').checked = store.get('flip', '0') === '1';
   $('steer').value = store.get('steer', 'normal');
+  if (!['low', 'normal', 'high'].includes($('steer').value)) $('steer').value = 'normal';
   $('flipSteer').checked = store.get('flipSteer', '0') === '1';
 
   let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
@@ -121,14 +121,13 @@
     if (me) document.title = `${me.name} · Swing Bowl`;
   }
 
-  // position / aim
+  // starting position
   SB.repeatButton($('left'), () => st && st.yourTurn && client.send({ t: 'move', d: -1 }));
   SB.repeatButton($('right'), () => st && st.yourTurn && client.send({ t: 'move', d: 1 }));
-  SB.repeatButton($('aimL'), () => st && st.yourTurn && client.send({ t: 'aim', d: -1 }));
-  SB.repeatButton($('aimR'), () => st && st.yourTurn && client.send({ t: 'aim', d: 1 }));
 
   $('settings').onclick = () => { $('sheet').hidden = false; $('go').textContent = client.open ? 'Save' : 'Connect & enable motion'; $('sheetStatus').textContent = ''; };
-  $('room').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+  // delegated, so it survives clearUndo() swapping the input for a fresh copy
+  $('sheet').addEventListener('input', e => { if (e.target.id === 'room') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
 
   $('go').onclick = async () => {
     const room = $('room').value.trim().toUpperCase();
@@ -137,6 +136,7 @@
     store.set('room', room); store.set('name', name); store.set('flip', $('flip').checked ? '1' : '0');
     store.set('steer', $('steer').value); store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
     pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
+    SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
     client.connect(room, { t: 'hello', id: cid, name });

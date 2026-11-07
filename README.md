@@ -14,13 +14,13 @@ Wii-style motion bowling that runs in the browser. A laptop or TV shows the lane
 
 ## How a throw works
 
-- **Position / aim:** ◀ ▶ to move along the foul line, ↖ ↗ to angle the throw.
+- **Position:** ◀ ▶ to move along the foul line. There are no aim buttons; direction comes only from your swing.
 - **Power:** while you hold the button, the phone samples `DeviceMotionEvent.rotationRate`. Release speed comes from the peak rotation rate in the last 0.6 s before you let go. It doesn't depend on orientation, so any grip works.
 - **Hook:** wrist twist around the phone's long axis (`rotationRate.gamma`) in the last 0.35 s, integrated into degrees. It has a dead zone, and lefties can flip its sign in settings.
-- **Direction:** the swing plane of the forward swing is compared with the backswing's in world coordinates. Swing straight back and through and the ball follows the aim arrow. Pull across your body and it goes left or right (*Swing steers the ball*: off/low/normal/high, plus a flip option). This uses the fused `deviceorientation` stream converted to rotation matrices, not raw gyro axes, and removes wrist twist first, so hooking the ball doesn't change its direction.
+- **Direction:** the swing plane of the forward swing is compared with the backswing's in world coordinates. Swing straight back and through for a straight ball, or pull across your body to send it left or right (*Swing sensitivity*: low/normal/high, plus a flip option). This uses the fused `deviceorientation` stream converted to rotation matrices, not raw gyro axes, and removes wrist twist first, so hooking the ball doesn't change its direction.
 - **Fallback:** if there are no motion sensors (desktop browser, permission denied), the button switches to "hold to charge, slide to spin".
 
-Keyboard on the big screen: `←` `→` move · `↑` `↓` aim · `Q` `E` spin · hold `Space` for power · `N` new game · `M` mute.
+Keyboard on the big screen: `←` `→` move · `Q` `E` spin · hold `Space` for power · `N` new game · `M` mute.
 
 ## How the phone talks to the screen
 

@@ -27,7 +27,7 @@
           <button class="btn" id="start">Start game</button>
           <button class="btn ghost" id="newgame" hidden>New game</button>
         </div>
-        <div class="keys">No phone handy? Play here: <kbd>←</kbd><kbd>→</kbd> move · <kbd>↑</kbd><kbd>↓</kbd> aim · <kbd>Q</kbd><kbd>E</kbd> spin · hold <kbd>Space</kbd> for power, release to throw · <kbd>N</kbd> new game</div>
+        <div class="keys">No phone handy? Play here: <kbd>←</kbd><kbd>→</kbd> move · <kbd>Q</kbd><kbd>E</kbd> spin · hold <kbd>Space</kbd> for power, release to throw · <kbd>N</kbd> new game</div>
       </div>
     </div>
   </div>
@@ -147,7 +147,7 @@
   addEventListener('keydown', e => {
     if (e.repeat && e.code === 'Space') return;
     const info = app.info();
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
+    if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
     if (e.code === 'KeyN') { startNewGame(); hideLobby(); return; }
     if (e.code === 'KeyM') { $('mute').click(); return; }
     if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
@@ -155,8 +155,6 @@
     const cur = app.info().cur;
     if (e.code === 'ArrowLeft') app.input(cur, { t: 'move', d: -1 });
     if (e.code === 'ArrowRight') app.input(cur, { t: 'move', d: 1 });
-    if (e.code === 'ArrowUp' || e.code === 'KeyD') app.input(cur, { t: 'aim', d: 1 });
-    if (e.code === 'ArrowDown' || e.code === 'KeyA') app.input(cur, { t: 'aim', d: -1 });
     if (e.code === 'KeyQ') { keyboardSpin = Math.max(-1, keyboardSpin - 0.25); flashSpin(); }
     if (e.code === 'KeyE') { keyboardSpin = Math.min(1, keyboardSpin + 0.25); flashSpin(); }
     if (e.code === 'Space' && info.state === 'aim' && !info.over) {
