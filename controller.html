@@ -41,8 +41,8 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script>window.Peer || document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>')</script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
 <script src="js/motion.js"></script>
 <script src="js/net.js"></script>
 <script src="js/pad.js"></script>
@@ -59,9 +59,10 @@
   $('name').value = store.get('name', '');
   $('flip').checked = store.get('flip', '0') === '1';
 
-  let st = null, enabled = false, hintTimer = 0;
+  let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
 
   const client = new SB.Client({
+    id: cid,
     onStatus(kind, text) {
       if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for the game…'); }
       else if (kind === 'error' || kind === 'closed') {
@@ -89,6 +90,7 @@
 
   function hint(text) {
     setState(text, false);
+    hintUntil = Date.now() + 2600;
     clearTimeout(hintTimer);
     hintTimer = setTimeout(render, 2600);
   }
@@ -101,6 +103,7 @@
     const cur = st.players[st.cur];
     $('hold').disabled = !(st.yourTurn || st.over);
     pad.setLabels();
+    if (Date.now() < hintUntil) return;
     if (st.queued) setState('You’re in! You’ll join at the next game.');
     else if (st.over) setState('Game over! Tap the button for a new game.', true);
     else if (st.yourTurn) setState(`Your turn · Frame ${st.frame} · Ball ${st.ball}`, true);

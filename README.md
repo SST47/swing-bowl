@@ -23,11 +23,12 @@ Keyboard on the big screen: `←` `→` move · `↑` `↓` aim · `Q` `E` spin 
 
 ## How the phone talks to the screen
 
-The pages are fully static, with no server of our own. Phones connect to the big screen **peer-to-peer over WebRTC** using [PeerJS](https://peerjs.com/). The screen registers a room like `swingbowl-v1-KQTZ` on PeerJS's free public signalling server. Once the handshake is done, throws go directly between devices.
+The pages are fully static, with no server of our own. Phones and the big screen exchange small JSON messages through **free public MQTT brokers over secure WebSockets** ([EMQX](https://www.emqx.com/en/mqtt/public-mqtt5-broker), [HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/), [Mosquitto](https://test.mosquitto.org/)), using [MQTT.js](https://github.com/mqttjs/MQTT.js). Each room code gets its own topic (`swingbowl/v1/<ROOM>/…`). The screen listens on all the brokers at once, and each phone uses the first one it can reach.
+
+Why a relay rather than a direct peer-to-peer (WebRTC) link? WebRTC often fails between a phone and a laptop: routers without NAT hairpinning, VPNs, phones on cellular. With no relay to fall back on, it just times out. A WebSocket relay works on any network that can load a web page. A throw is a single message, so the extra ~50–150 ms is unnoticeable in bowling.
 
 Notes:
-- Both devices need internet access for the handshake. The same Wi-Fi network gives the lowest latency.
-- Some strict networks (corporate or hotel Wi-Fi, some cellular) block peer-to-peer connections. There's no TURN relay configured. See *Ideas* below.
+- Public brokers are shared and unauthenticated. Anyone who guessed your room code's topic could read the throws. Fine for a game, but don't send anything private this way.
 - iOS only exposes motion sensors over **HTTPS** and after a tap (`DeviceMotionEvent.requestPermission()`). GitHub Pages provides the HTTPS.
 
 ## Run locally
@@ -47,7 +48,7 @@ js/game.js     game loop, turns, HUD (scoreboard, pin indicator, messages)
 js/audio.js    synthesized sound effects (Web Audio, no files)
 js/motion.js   swing detector (DeviceMotion → speed + spin)
 js/pad.js      shared phone-controller UI logic
-js/net.js      PeerJS host/client wrapper
+js/net.js      screen/phone link over public MQTT brokers (WebSockets)
 tests/         node tests for scoring and physics
 ```
 
@@ -55,6 +56,6 @@ Run the tests with `node tests/engine.test.js`.
 
 ## Ideas
 
-- Add a TURN server (or a tiny WebSocket relay) for networks that block WebRTC.
+- Run a private relay (or add WebRTC with a TURN server) instead of the public brokers.
 - More games on the same controller: tennis (swing timing), golf (backswing length), boxing.
 - Spare-pickup challenge mode and saved high scores.

@@ -33,8 +33,8 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script>window.Peer || document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>')</script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/audio.js"></script>
@@ -78,7 +78,7 @@
       } else st.textContent = text;
       if (kind === 'offline') { $('qr').textContent = 'Phone controllers need an internet connection. You can still play with the keyboard.'; }
     },
-    onJoin(id) { conns.set(id, { cid: null, idx: null }); },
+    onJoin(id) { conns.set(id, { cid: null, idx: null }); host.send(id, { t: 'who' }); },
     onLeave(id) { conns.delete(id); renderLobby(); },
     onMessage(id, msg) {
       const c = conns.get(id); if (!c || !msg) return;
@@ -101,6 +101,7 @@
   });
   let pref = null; try { pref = sessionStorage.getItem('sb-room'); } catch (e) {}
   host.start(pref);
+  setInterval(() => pushState(app.info()), SB.HEARTBEAT);   // doubles as a heartbeat for the phones
 
   function pushState(info) {
     host.broadcast(id => {
