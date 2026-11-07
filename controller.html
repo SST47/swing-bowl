@@ -63,7 +63,7 @@
   if (!['low', 'normal', 'high'].includes($('steer').value)) $('steer').value = 'normal';
   $('flipSteer').checked = store.get('flipSteer', '0') === '1';
 
-  let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
+  let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0;
 
   const client = new SB.Client({
     id: cid,
@@ -74,7 +74,10 @@
         $('hold').disabled = true;
       } else $('sheetStatus').textContent = text;
     },
-    onMessage(m) { if (m && m.t === 'state') { st = m; render(); } },
+    onMessage(m) {
+      if (m && m.t === 'kicked') { onKicked(); return; }
+      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+    },
   });
 
   const pad = SB.setupHold({
@@ -97,6 +100,18 @@
     if (r.steerDeg !== null && r.steerDeg !== undefined) dir = Math.abs(r.steerDeg) < 2.5 ? 'straight' : (r.steerDeg > 0 ? '← ' : '→ ') + Math.abs(r.steerDeg).toFixed(0) + '°';
     return { km: (r.speed * 3.6).toFixed(0), sp, dir };
   }
+  // The host removed this phone from the game: stop, and offer a way back in.
+  function onKicked() {
+    if (kicked) return;
+    kicked = true; st = null;
+    $('hold').disabled = true;
+    $('readout').textContent = '';
+    setState('Removed from the game');
+    $('sheet').hidden = false;
+    $('sheetStatus').textContent = 'The big screen removed you from this game. Tap “Join again” if you want back in.';
+    $('go').textContent = 'Join again';
+  }
+
   function hint(text) {
     setState(text, false);
     hintUntil = Date.now() + 2600;
@@ -138,7 +153,14 @@
     pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
     SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
+    if (kicked && client.open && client.code === room) {
+      kicked = false; $('sheetStatus').textContent = '';
+      client.send({ t: 'hello', id: cid, name, rejoin: true });
+      $('sheet').hidden = true; setState('Rejoining…');
+      return;
+    }
     if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
+    kicked = false;
     client.connect(room, { t: 'hello', id: cid, name });
   };
 })();

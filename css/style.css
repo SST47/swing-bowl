@@ -70,6 +70,10 @@ a { color: var(--cyan); }
 .chip { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-weight: 600; }
 .chip i { width: 10px; height: 10px; border-radius: 50%; }
 .chip.off { opacity: .5; }
+.chip .kick { margin-left: 2px; border: 0; background: rgba(255,255,255,.1); color: var(--muted); border-radius: 999px; min-width: 22px; height: 22px; padding: 0 6px; font-size: 12px; line-height: 22px; }
+.chip .kick:hover { background: rgba(255,61,127,.35); color: #fff; }
+.chip .kick.confirm { background: var(--pink); color: #fff; font-weight: 700; }
+.chip.off .kick { opacity: 1; }
 .btn { background: linear-gradient(135deg, var(--accent), var(--pink)); border: 0; border-radius: 12px; padding: 12px 22px; font-weight: 800; font-size: 17px; color: #fff; }
 .btn.ghost { background: rgba(255,255,255,.08); border: 1px solid var(--line); font-weight: 600; }
 .btn:disabled { opacity: .4; }

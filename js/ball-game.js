@@ -84,6 +84,28 @@
       return i;
     }
     renamePlayer(i, n) { if (this.players[i] && n) { this.players[i].name = String(n).slice(0, 14); this._renderBoard(); this._emit(); } }
+    // Kick a player, even mid-derby. If they were batting, the next batter steps in.
+    removePlayer(i) {
+      if (!this.players[i]) return;
+      const wasCur = i === this.cur;
+      this.players.splice(i, 1);
+      if (!this.players.length) { this.cur = 0; this.newGame(); return; }
+      if (i < this.cur) this.cur--;
+      else if (wasCur && !this.over) {
+        this.pitch = null; this.hit = null; this.armed = false; this.swingAnim = -1; this.lastBall = null;
+        if (this.cur >= this.players.length) {
+          this.cur = this.players.length - 1;
+          this.over = true; this.state = 'over';
+          const r = [...this.players].sort((a, b) => b.hrs - a.hrs || b.longest - a.longest);
+          this._flash(r.length > 1 ? `${r[0].name} WINS · ${r[0].hrs} HR` : `DERBY OVER · ${r[0].hrs} HR`, 'over', true);
+        } else {
+          this.state = 'wait'; this.timer = 2.2; this.idle = 0;
+          this._flash(`NOW BATTING: ${this.players[this.cur].name.toUpperCase()}`, 'info');
+        }
+      }
+      this._renderBoard(); this._renderTop(); this._emit();
+    }
+
     newGame() {
       for (const p of this.players) { p.swings = 0; p.hrs = 0; p.longest = 0; }
       this.cur = 0; this.over = false; this.started = false; this.state = 'wait'; this.timer = 2; this.pitch = null; this.hit = null;

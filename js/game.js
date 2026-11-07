@@ -46,6 +46,27 @@
       this._emit();
     }
 
+    // Kick a player, even mid-game. If it was their turn, the next bowler steps up to a fresh rack.
+    removePlayer(i) {
+      const m = this.match;
+      if (!m.players[i]) return;
+      const wasCur = i === m.cur;
+      m.players.splice(i, 1);
+      if (!m.players.length) { this.newGame(); return; }
+      if (i < m.cur) m.cur--;
+      else if (wasCur && !m.over) {
+        this.lane.resetPins(); this.lane.ball = null; this.pending = null; this.holding = null;
+        this.state = 'aim';
+        this.renderer.snapCamera();
+        if (m.cur >= m.players.length) {
+          m.cur = 0; m.frame++;
+          if (m.frame >= 10) { m.over = true; this.state = 'over'; const ps = m.players.map(p => ({ p, t: scoreCard(p.frames).total })).sort((a, b) => b.t - a.t); this._flash(ps.length > 1 ? `${ps[0].p.name} WINS · ${ps[0].t}` : `FINAL SCORE · ${ps[0].t}`, 'over', true); }
+        }
+      }
+      this._pinKey = null;
+      this._renderScores(); this._renderPins(); this._emit();
+    }
+
     newGame() {
       this.match.reset();
       this.lane.resetPins();

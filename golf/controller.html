@@ -63,7 +63,7 @@
   $('flipSteer').checked = store.get('golf-flipSteer', '0') === '1';
   $('flipCurve').checked = store.get('golf-flipCurve', '0') === '1';
 
-  let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
+  let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0;
   const client = new SB.Client({
     id: cid, namespace: 'swinggolf/v1/',
     onStatus(kind, text) {
@@ -71,7 +71,10 @@
       else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('hold').disabled = true; }
       else $('sheetStatus').textContent = text;
     },
-    onMessage(m) { if (m && m.t === 'state') { st = m; render(); } },
+    onMessage(m) {
+      if (m && m.t === 'kicked') { onKicked(); return; }
+      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+    },
   });
 
   const GAIN = { low: 0.25, normal: 0.4, high: 0.6 };
@@ -105,6 +108,18 @@
     },
     onHint: hint,
   });
+
+  // The host removed this phone from the game: stop, and offer a way back in.
+  function onKicked() {
+    if (kicked) return;
+    kicked = true; st = null;
+    $('hold').disabled = true;
+    $('readout').textContent = '';
+    setState('Removed from the game');
+    $('sheet').hidden = false;
+    $('sheetStatus').textContent = 'The big screen removed you from this game. Tap “Join again” if you want back in.';
+    $('go').textContent = 'Join again';
+  }
 
   function hint(text) { setState(text, false); hintUntil = Date.now() + 2600; clearTimeout(hintTimer); hintTimer = setTimeout(render, 2600); }
   function setState(text, go) { const el = $('state'); el.textContent = text; el.classList.toggle('go', !!go); }
@@ -140,7 +155,14 @@
     store.set('golf-steer', $('steer').value); store.set('golf-flipSteer', $('flipSteer').checked ? '1' : '0'); store.set('golf-flipCurve', $('flipCurve').checked ? '1' : '0');
     SB.clearUndo($('sheet'));
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
+    if (kicked && client.open && client.code === room) {
+      kicked = false; $('sheetStatus').textContent = '';
+      client.send({ t: 'hello', id: cid, name, rejoin: true });
+      $('sheet').hidden = true; setState('Rejoining…');
+      return;
+    }
     if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
+    kicked = false;
     client.connect(room, { t: 'hello', id: cid, name });
   };
 })();

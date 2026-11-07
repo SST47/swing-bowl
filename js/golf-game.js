@@ -34,6 +34,23 @@
       return i;
     }
     renamePlayer(i, n) { if (this.players[i] && n) { this.players[i].name = String(n).slice(0, 14); this._renderCard(); this._emit(); } }
+    // Kick a player, even mid-hole. If it was their shot, play moves on.
+    removePlayer(i) {
+      const p = this.players[i];
+      if (!p) return;
+      const wasCur = i === this.cur;
+      if (this.anim && this.anim.p === p) this.anim = null;
+      this.players.splice(i, 1);
+      if (!this.players.length) { this.cur = 0; this.newGame(); return; }
+      if (i < this.cur) this.cur--;
+      if (wasCur && !this.over && ['address', 'flight', 'result'].includes(this.state)) {
+        this.armed = null;
+        this.cur = Math.min(this.cur, this.players.length - 1);
+        this._next();
+      } else if (this.cur >= this.players.length) this.cur = 0;
+      this._renderCard(); this._emit();
+    }
+
     newGame() {
       for (const p of this.players) p.cards = [];
       this.over = false; this.started = false;
