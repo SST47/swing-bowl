@@ -94,6 +94,73 @@
     return { det, enable, setLabels, get tapMode() { return tapMode; } };
   }
 
+  /*
+   * Impact-mode button (golf, baseball): hold it, swing, and the hit fires at the
+   * fastest point of the swing. Tap mode (no sensors): hold to charge, release to hit.
+   * opts: { button, meter, minPeak, fullPeak, canSwing(), onArm(on), onSwing(result), onHint(text), labels:{hold, sub, tapSub} }
+   * result: { power, peakT, twist, dirDeg, tap }
+   */
+  function setupSwing(opts) {
+    const det = new SwingDetector();
+    let tapMode = false, down = false, pressT = 0, raf = 0, startX = 0, curX = 0;
+    const btn = opts.button, meter = opts.meter;
+    const label = btn.querySelector('.lbl'), sub = btn.querySelector('small');
+    const L = Object.assign({ hold: 'HOLD & SWING', sub: 'swing through the ball', tapSub: 'release to hit · slide to curve' }, opts.labels || {});
+    const setLabels = () => { label.textContent = tapMode ? 'HOLD' : L.hold; sub.textContent = tapMode ? L.tapSub : L.sub; };
+    det.watchImpact({
+      minPeak: opts.minPeak || 150, fullPeak: opts.fullPeak || 900,
+      onImpact: r => { if (!down) return; finish(); opts.onSwing(r); },
+    });
+
+    async function enable() {
+      const perm = await SwingDetector.requestPermission();
+      det.start();
+      setTimeout(() => {
+        if (!det.available) {
+          tapMode = true; setLabels();
+          opts.onHint(perm === 'denied'
+            ? 'Motion access was denied, so you’re in tap mode. To swing for real: Settings › Safari › Motion & Orientation Access, then reload.'
+            : 'No motion sensors found, so you’re in tap mode: hold to charge, release to hit.');
+        }
+      }, 1500);
+      setLabels();
+    }
+    function loop() {
+      if (!down) { meter.style.width = '0%'; return; }
+      const v = tapMode ? Math.min(1, (performance.now() - pressT) / 1400) : Math.min(1, det.live / (opts.fullPeak || 900));
+      meter.style.width = (v * 100).toFixed(0) + '%';
+      raf = requestAnimationFrame(loop);
+    }
+    function finish() { down = false; btn.classList.remove('down'); det.holding = false; opts.onArm(false); }
+
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!opts.canSwing()) return;
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      down = true; pressT = performance.now(); startX = curX = e.clientX;
+      btn.classList.add('down');
+      det.hold();
+      opts.onArm(true);
+      cancelAnimationFrame(raf); loop();
+    });
+    btn.addEventListener('pointermove', e => { if (down) curX = e.clientX; });
+    const up = () => {
+      if (!down) return;
+      const held = performance.now() - pressT;
+      finish();
+      if (tapMode) {
+        const p = Math.min(1, held / 1400);
+        if (p < 0.08) { opts.onHint('Hold a little longer.'); return; }
+        opts.onSwing({ power: p, peakT: performance.now(), twist: -(curX - startX) / 110 * 60, dirDeg: null, tap: true });
+      } else opts.onHint('Keep holding the button while you swing. The hit happens by itself.');
+    };
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    return { det, enable, setLabels, get tapMode() { return tapMode; }, get armed() { return down; } };
+  }
+
   async function keepAwake() {
     try { if (navigator.wakeLock) { let l = await navigator.wakeLock.request('screen'); document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible') { try { l = await navigator.wakeLock.request('screen'); } catch (e) {} } }); } } catch (e) {}
   }
@@ -118,5 +185,5 @@
     set(k, v) { try { localStorage.setItem('sb-' + k, v); } catch (e) {} },
   };
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, setupHold, keepAwake, store, clearUndo });
+  root.SB = Object.assign(root.SB || {}, { repeatButton, setupHold, setupSwing, keepAwake, store, clearUndo });
 })(self);

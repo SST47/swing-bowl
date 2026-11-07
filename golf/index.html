@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swing Golf · Big screen</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div class="power" id="power" hidden><div></div></div>
+  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Show QR</button> <button id="mute">🔊</button></div>
+
+  <div class="overlay" id="lobby">
+    <div class="card lobby">
+      <div class="qr" id="qr">Loading QR…</div>
+      <div>
+        <h1>⛳ <span>Swing Golf</span></h1>
+        <p>Scan with your phone camera to use it as your club. 3 holes, up to 6 players.</p>
+        <div class="code" id="code">····</div>
+        <div class="joinurl" id="joinurl"></div>
+        <div class="status" id="status">Opening room…</div>
+        <div class="players" id="players"></div>
+        <div class="row">
+          <button class="btn" id="start">Start game</button>
+          <button class="btn ghost" id="newgame" hidden>New game</button>
+        </div>
+        <div class="keys">No phone handy? <kbd>←</kbd><kbd>→</kbd> club · <kbd>A</kbd><kbd>D</kbd> push left/right · <kbd>Q</kbd><kbd>E</kbd> curve · hold <kbd>Space</kbd> for power, release to hit · <kbd>N</kbd> new round</div>
+        <p style="font-size:13px"><a href="../">← All games</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/net.js"></script>
+<script src="../js/room.js"></script>
+<script src="../js/golf-engine.js"></script>
+<script src="../js/golf-game.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  addEventListener('pointerdown', () => sfx.unlock()); addEventListener('keydown', () => sfx.unlock());
+  $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
+
+  let room, overShown = false;
+  const game = new GOLF.GolfGame({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+    if (room) { room.push(); room.renderLobby(); }
+    if (info.over && !overShown) { overShown = true; setTimeout(() => { if (game.info().over) room.show(); }, 5000); }
+    if (!info.over) overShown = false;
+  } });
+  room = new SB.Room({
+    namespace: 'swinggolf/v1/', storageKey: 'sg-room', game,
+    stateFor: (idx, info) => ({
+      game: 'golf', yourTurn: idx !== null && idx === info.cur && info.state === 'address' && !info.over,
+      hole: info.hole, holes: info.holes, par: info.par, dist: info.dist, lie: info.lie, club: info.club, clubIdx: info.clubIdx, putter: info.putter, stroke: info.stroke, state: info.state,
+    }),
+  });
+  room.start();
+
+  // keyboard play
+  let charging = null, kPath = 0, kSide = 0;
+  const power = $('power'), bar = power.firstElementChild;
+  const ensure = () => { if (!game.info().players.length) game.addPlayer('Player 1'); };
+  addEventListener('keydown', e => {
+    if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    if (e.repeat && e.code === 'Space') return;
+    if (e.code === 'KeyN') { room.newGame(); room.hide(); return; }
+    if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
+    ensure();
+    const cur = game.info().cur;
+    if (e.code === 'ArrowLeft') game.input(cur, { t: 'club', d: -1 });
+    if (e.code === 'ArrowRight') game.input(cur, { t: 'club', d: 1 });
+    if (e.code === 'KeyA') { kPath = Math.min(10, kPath + 2); game._flash(`PUSH ${kPath > 0 ? '← ' + kPath : kPath < 0 ? '→ ' + -kPath : 'STRAIGHT'}°`, 'info'); }
+    if (e.code === 'KeyD') { kPath = Math.max(-10, kPath - 2); game._flash(`PUSH ${kPath > 0 ? '← ' + kPath : kPath < 0 ? '→ ' + -kPath : 'STRAIGHT'}°`, 'info'); }
+    if (e.code === 'KeyQ') { kSide = Math.min(1, kSide + 0.25); game._flash(kSide ? `CURVE ${kSide > 0 ? 'LEFT' : 'RIGHT'} ${Math.abs(kSide * 100)}%` : 'NO CURVE', 'info'); }
+    if (e.code === 'KeyE') { kSide = Math.max(-1, kSide - 0.25); game._flash(kSide ? `CURVE ${kSide > 0 ? 'LEFT' : 'RIGHT'} ${Math.abs(kSide * 100)}%` : 'NO CURVE', 'info'); }
+    if (e.code === 'Space' && game.info().state === 'address' && !game.info().over) {
+      room.hide();
+      charging = performance.now(); power.hidden = false;
+      (function grow() { if (charging === null) return; bar.style.width = Math.min(100, (performance.now() - charging) / 14) + '%'; requestAnimationFrame(grow); })();
+    }
+  });
+  addEventListener('keyup', e => {
+    if (e.code !== 'Space' || charging === null) return;
+    const p = Math.min(1, (performance.now() - charging) / 1400);
+    charging = null; power.hidden = true; bar.style.width = '0';
+    game.input(game.info().cur, { t: 'swing', power: p, path: kPath, side: kSide });
+  });
+})();
+</script>
+</body>
+</html>

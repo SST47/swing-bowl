@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1026">
+<title>Swing Golf · Controller</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="pad">
+  <div class="top">
+    <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
+    <button class="gear" id="settings">⚙︎ Settings</button>
+  </div>
+  <div class="state" id="state">Not connected</div>
+  <div class="meter"><div id="meter"></div></div>
+  <div class="readout" id="readout"></div>
+  <div class="club">
+    <button id="prev">◀</button>
+    <div class="nm"><b id="club">—</b><small id="clubinfo"></small></div>
+    <button id="next">▶</button>
+  </div>
+  <div class="holdwrap">
+    <button class="hold" id="hold" disabled><span class="lbl">HOLD &amp; SWING</span><small>swing through the ball</small></button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h2>⛳ Join the round</h2>
+    <p>Enter the code on the big screen.</p>
+    <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+    <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <label>Swing sensitivity <select id="steer"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+    <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
+    <label><input type="checkbox" id="flipCurve"> Flip curve (lefties)</label>
+    <button class="btn" id="go">Connect &amp; enable motion</button>
+    <p class="status" id="sheetStatus"></p>
+    <p style="font-size:13px">How to play: grip the phone like a club. Press and <b>hold</b> the big button, take your backswing, and swing through. The hit happens by itself at the fastest point. Swing harder to hit farther. Pull or push your swing to send the ball left or right, and roll your wrist through impact to curve it. For putts, use a short, gentle stroke.</p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="../js/motion.js"></script>
+<script src="../js/net.js"></script>
+<script src="../js/pad.js"></script>
+<script src="../js/golf-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const store = SB.store;
+  let cid = store.get('cid', null);
+  if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
+  const params = new URLSearchParams(location.search);
+  $('room').value = (params.get('room') || store.get('golf-room', '')).toUpperCase();
+  $('name').value = store.get('name', '');
+  $('steer').value = store.get('golf-steer', 'normal');
+  $('flipSteer').checked = store.get('golf-flipSteer', '0') === '1';
+  $('flipCurve').checked = store.get('golf-flipCurve', '0') === '1';
+
+  let st = null, enabled = false, hintTimer = 0, hintUntil = 0;
+  const client = new SB.Client({
+    id: cid, namespace: 'swinggolf/v1/',
+    onStatus(kind, text) {
+      if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for the round…'); }
+      else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('hold').disabled = true; }
+      else $('sheetStatus').textContent = text;
+    },
+    onMessage(m) { if (m && m.t === 'state') { st = m; render(); } },
+  });
+
+  const GAIN = { low: 0.25, normal: 0.4, high: 0.6 };
+  function pathFrom(deg, putter) {
+    if (deg === null || deg === undefined) return 0;
+    const k = (GAIN[$('steer').value] || 0.4) * (putter ? 0.5 : 1);
+    if (Math.abs(deg) <= 2) return 0;
+    let p = Math.sign(deg) * (Math.abs(deg) - 2) * k;
+    if ($('flipSteer').checked) p = -p;
+    return Math.max(-12, Math.min(12, p));
+  }
+  function sideFrom(twist) {
+    if (Math.abs(twist) <= 10) return 0;
+    let s = -(twist - Math.sign(twist) * 10) / 80;
+    if ($('flipCurve').checked) s = -s;
+    return Math.max(-1, Math.min(1, s));
+  }
+
+  const pad = SB.setupSwing({
+    button: $('hold'), meter: $('meter'), minPeak: 150, fullPeak: 900,
+    canSwing: () => !!(st && st.yourTurn),
+    onArm: on => client.send({ t: 'arm', on }),
+    onSwing: r => {
+      const putter = !!(st && st.putter);
+      const path = r.tap ? 0 : pathFrom(r.dirDeg, putter);
+      const side = putter ? 0 : (r.tap ? Math.max(-1, Math.min(1, r.twist / 60)) : sideFrom(r.twist));
+      client.send({ t: 'swing', power: r.power, path, side });
+      const dir = Math.abs(path) < 0.5 ? 'straight' : (path > 0 ? '← ' : '→ ') + Math.abs(path).toFixed(1) + '°';
+      const curve = putter ? '' : ` · Curve <b>${Math.abs(side) < 0.08 ? 'none' : side > 0 ? 'draw ↰' : 'fade ↱'}</b>`;
+      $('readout').innerHTML = `Power <b>${Math.round(r.power * 100)}%</b> · Start <b>${dir}</b>${curve}`;
+    },
+    onHint: hint,
+  });
+
+  function hint(text) { setState(text, false); hintUntil = Date.now() + 2600; clearTimeout(hintTimer); hintTimer = setTimeout(render, 2600); }
+  function setState(text, go) { const el = $('state'); el.textContent = text; el.classList.toggle('go', !!go); }
+  function render() {
+    if (!st) return;
+    const me = st.you !== null && st.players[st.you];
+    if (me) { $('dot').style.background = me.color; $('myname').textContent = me.name; }
+    $('club').textContent = st.club || '—';
+    $('clubinfo').textContent = st.putter ? `${st.dist} m to the hole` : `${(GOLF.CLUBS[st.clubIdx] || {}).target || ''} m full swing · ${st.dist} m to pin`;
+    // a putting stroke is much gentler than a full swing
+    pad.det.impact.minPeak = st.putter ? 30 : 150;
+    pad.det.impact.fullPeak = st.putter ? 380 : 900;
+    $('hold').disabled = !st.yourTurn;
+    $('prev').disabled = $('next').disabled = !st.yourTurn;
+    if (Date.now() < hintUntil) return;
+    const cur = st.players[st.cur];
+    if (st.queued) setState('You’re in! You’ll join the next round.');
+    else if (st.over) setState('Round over! Ask the big screen for a new round.');
+    else if (st.yourTurn) setState(`Your shot · Hole ${st.hole} · Par ${st.par} · Stroke ${st.stroke}`, true);
+    else if (st.state === 'flight' && st.cur === st.you) setState('In the air…');
+    else if (cur) setState(`Waiting for ${cur.name}…`);
+  }
+
+  SB.repeatButton($('prev'), () => st && st.yourTurn && client.send({ t: 'club', d: -1 }));
+  SB.repeatButton($('next'), () => st && st.yourTurn && client.send({ t: 'club', d: 1 }));
+  $('settings').onclick = () => { $('sheet').hidden = false; $('go').textContent = client.open ? 'Save' : 'Connect & enable motion'; $('sheetStatus').textContent = ''; };
+  $('sheet').addEventListener('input', e => { if (e.target.id === 'room') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+  $('go').onclick = async () => {
+    const room = $('room').value.trim().toUpperCase();
+    const name = $('name').value.trim().slice(0, 14);
+    if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
+    store.set('golf-room', room); store.set('name', name);
+    store.set('golf-steer', $('steer').value); store.set('golf-flipSteer', $('flipSteer').checked ? '1' : '0'); store.set('golf-flipCurve', $('flipCurve').checked ? '1' : '0');
+    SB.clearUndo($('sheet'));
+    if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
+    if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
+    client.connect(room, { t: 'hello', id: cid, name });
+  };
+})();
+</script>
+</body>
+</html>

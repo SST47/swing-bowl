@@ -166,6 +166,7 @@
       const t = performance.now();
       this.samples.push({ t, g, mag });
       while (this.samples.length && t - this.samples[0].t > 2500) this.samples.shift();
+      this._checkImpact(t, mag);
     }
 
     _onOrient(e) {
@@ -180,7 +181,31 @@
       while (this.oSamples.length && t - this.oSamples[0].t > 2500) this.oSamples.shift();
     }
 
-    hold() { this.holding = true; this.samples = []; this.oSamples = []; }
+    hold() { this.holding = true; this.samples = []; this.oSamples = []; this._ipeak = 0; this._ifired = false; }
+
+    /*
+     * Impact mode (golf, baseball): while the button is held, the hit happens by
+     * itself at the fastest point of the swing — no need to let go on time.
+     * opts: { minPeak (deg/s), fullPeak (deg/s), onImpact(result) }
+     * result: { power 0..1, peak, peakT (performance.now ms), twist (deg), dirDeg|null }
+     */
+    watchImpact(opts) { this.impact = opts; }
+
+    _checkImpact(t, mag) {
+      const o = this.impact;
+      if (!o || this._ifired || !this.holding) return;
+      if (mag > this._ipeak) { this._ipeak = mag; this._ipeakT = t; }
+      if (this._ipeak >= o.minPeak && mag < this._ipeak * 0.55) {
+        this._ifired = true;
+        const peak = this._ipeak, peakT = this._ipeakT;
+        let twist = 0;
+        const s = this.samples;
+        for (let i = 1; i < s.length; i++) if (s[i].t >= peakT - 250) twist += s[i].g * (s[i].t - s[i - 1].t) / 1000;
+        const dir = swingDirection(this.oSamples, t);
+        const power = Math.max(0, Math.min(1, (peak - o.minPeak) / (o.fullPeak - o.minPeak)));
+        o.onImpact({ power, peak, peakT, twist, dirDeg: dir.ok ? dir.deg : null });
+      }
+    }
 
     // Returns { ok, speed (m/s), spin (-1..1), steer (rad), steerDeg, peak, twist } or { ok:false, reason }
     release() {

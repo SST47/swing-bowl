@@ -20,7 +20,7 @@
     'wss://broker.hivemq.com:8884/mqtt',
     'wss://test.mosquitto.org:8081/mqtt',
   ];
-  const BASE = 'swingbowl/v1/';
+  const DEFAULT_NS = 'swingbowl/v1/';
   const LETTERS = 'BCDFGHJKLMNPQRSTVWXZ';
   const PEER_TIMEOUT = 12000;   // ms without a message before someone counts as gone
   const HEARTBEAT = 3000;
@@ -43,7 +43,8 @@
 
   // ---------------- big screen ----------------
   class Host {
-    constructor({ onStatus, onJoin, onMessage, onLeave }) {
+    constructor({ onStatus, onJoin, onMessage, onLeave, namespace }) {
+      this.base = namespace || DEFAULT_NS;
       this.onStatus = onStatus || (() => {});
       this.onJoin = onJoin || (() => {});
       this.onMessage = onMessage || (() => {});
@@ -62,7 +63,7 @@
         const c = connectBroker(url);
         this.clients[bi] = c;
         c.on('connect', () => {
-          c.subscribe(BASE + this.code + '/up', { qos: 0 });
+          c.subscribe(this.base + this.code + '/up', { qos: 0 });
           if (!anyOpen) { anyOpen = true; this.onStatus('open', this.code); }
         });
         c.on('message', (topic, payload) => {
@@ -72,6 +73,7 @@
           const known = this.peers.get(cid);
           this.peers.set(cid, { broker: bi, seen: Date.now() });
           if (!known) this.onJoin(cid);
+          if (m.msg.t === 'sync') { this.send(cid, { t: 'sync', c: m.msg.c, h: performance.now() }); return; }   // clock sync for timing games
           if (m.msg.t !== 'ping') this.onMessage(cid, m.msg);
         });
         c.on('error', () => {
@@ -88,14 +90,17 @@
     send(cid, msg) {
       const p = this.peers.get(cid);
       const c = p && this.clients[p.broker];
-      if (c && c.connected) c.publish(BASE + this.code + '/down/' + cid, JSON.stringify(msg), { qos: 0 });
+      if (c && c.connected) c.publish(this.base + this.code + '/down/' + cid, JSON.stringify(msg), { qos: 0 });
     }
     broadcast(fn) { for (const cid of this.peers.keys()) this.send(cid, fn(cid)); }
   }
 
   // ---------------- phone ----------------
   class Client {
-    constructor({ onStatus, onMessage, id }) {
+    constructor({ onStatus, onMessage, id, namespace }) {
+      this.base = namespace || DEFAULT_NS;
+      this.syncs = [];
+      this.offset = 0;
       this.onStatus = onStatus || (() => {});
       this.onMessage = onMessage || (() => {});
       this.cid = clean(id) || randId();
@@ -131,7 +136,7 @@
         const first = !connected;
         connected = true;
         clearTimeout(this.brokerTimer);
-        c.subscribe(BASE + this.code + '/down/' + this.cid, { qos: 0 }, () => { if (first) this._handshake(); else this.send(this.hello); });
+        c.subscribe(this.base + this.code + '/down/' + this.cid, { qos: 0 }, () => { if (first) this._handshake(); else this.send(this.hello); });
       });
       c.on('message', (topic, payload) => {
         let m; try { m = JSON.parse(decode(payload)); } catch (e) { return; }
@@ -142,6 +147,7 @@
           this.onStatus('open', this.code);
         }
         if (m && m.t === 'who') { this._pub(this.hello); return; }
+        if (m && m.t === 'sync') { this._onSync(m); return; }
         this.onMessage(m);
       });
       c.on('offline', () => { if (this.open && this.c === c) this.onStatus('connecting', 'Reconnecting…'); });
@@ -162,7 +168,28 @@
       }, HEARTBEAT);
     }
 
-    _pub(msg) { if (this.c && this.c.connected) this.c.publish(BASE + this.code + '/up', JSON.stringify({ from: this.cid, msg }), { qos: 0 }); }
+    // ---- clock sync: estimate (screen clock - phone clock) from round trips ----
+    startSync() {
+      clearInterval(this.syncTimer);
+      let n = 0;
+      const ping = () => this.send({ t: 'sync', c: performance.now() });
+      const burst = setInterval(() => { ping(); if (++n >= 8) clearInterval(burst); }, 200);
+      this.syncTimer = setInterval(ping, 2500);
+    }
+    _onSync(m) {
+      const now = performance.now(), rtt = now - m.c;
+      if (rtt < 0 || rtt > 3000) return;
+      this.syncs.push({ rtt, off: m.h + rtt / 2 - now });
+      if (this.syncs.length > 12) this.syncs.shift();
+      // trust the fastest round trips: least queuing delay, least asymmetry
+      const best = [...this.syncs].sort((a, b) => a.rtt - b.rtt).slice(0, 3);
+      this.offset = best.reduce((a, s) => a + s.off, 0) / best.length;
+      this.rtt = best[0].rtt;
+      this.synced = this.syncs.length >= 3;
+    }
+    hostTime(local) { return (local ?? performance.now()) + this.offset; }
+
+    _pub(msg) { if (this.c && this.c.connected) this.c.publish(this.base + this.code + '/up', JSON.stringify({ from: this.cid, msg }), { qos: 0 }); }
     send(msg) { if (this.open) this._pub(msg); }
   }
 
