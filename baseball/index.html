@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swing Baseball · Big screen</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div class="power" id="power" hidden><div></div></div>
+  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Show QR</button> <button id="mute">🔊</button></div>
+
+  <div class="overlay" id="lobby">
+    <div class="card lobby">
+      <div class="qr" id="qr">Loading QR…</div>
+      <div>
+        <h1>⚾ <span>Home Run Derby</span></h1>
+        <p>Scan with your phone camera to use it as your bat. 10 swings each, most home runs wins. Up to 6 players.</p>
+        <div class="code" id="code">····</div>
+        <div class="joinurl" id="joinurl"></div>
+        <div class="status" id="status">Opening room…</div>
+        <div class="players" id="players"></div>
+        <div class="row">
+          <button class="btn" id="start">Start game</button>
+          <button class="btn ghost" id="newgame" hidden>New game</button>
+        </div>
+        <div class="keys">No phone handy? Press <kbd>Space</kbd> to swing as the ball reaches the plate · <kbd>L</kbd> switch to lefty · <kbd>N</kbd> new derby</div>
+        <p style="font-size:13px"><a href="../">← All games</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/net.js"></script>
+<script src="../js/room.js"></script>
+<script src="../js/ball-engine.js"></script>
+<script src="../js/ball-game.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  addEventListener('pointerdown', () => sfx.unlock()); addEventListener('keydown', () => sfx.unlock());
+  $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
+
+  let room, overShown = false;
+  const game = new BASEBALL.BaseballGame({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+    if (room) { room.push(); room.renderLobby(); }
+    if (info.over && !overShown) { overShown = true; setTimeout(() => { if (game.info().over) room.show(); }, 5000); }
+    if (!info.over) overShown = false;
+  } });
+  room = new SB.Room({
+    namespace: 'swingball/v1/', storageKey: 'sbb-room', game,
+    stateFor: (idx, info) => ({
+      game: 'baseball', state: info.state, yourTurn: idx !== null && idx === info.cur && !info.over,
+      swingsLeft: info.swingsLeft, hrs: info.hrs, pitching: info.pitching,
+    }),
+  });
+  room.start();
+  window.__game = game;   // handy for debugging from the console
+
+  // keyboard play: Space swings right now
+  const ensure = () => { if (!game.info().players.length) game.addPlayer('Player 1'); };
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') e.preventDefault();
+    if (e.repeat) return;
+    if (e.code === 'KeyN') { room.newGame(); room.hide(); return; }
+    if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
+    if (e.code === 'KeyL') { game.lefty = !game.lefty; game._flash(game.lefty ? 'BATTING LEFTY' : 'BATTING RIGHTY', 'info'); return; }
+    ensure();
+    if (e.code === 'Space') { room.hide(); game.input(game.info().cur, { t: 'swing', power: 0.9, at: performance.now() }); }
+  });
+})();
+</script>
+</body>
+</html>
