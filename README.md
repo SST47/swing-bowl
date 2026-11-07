@@ -6,9 +6,9 @@ Wii-style motion sports in the browser. A laptop or TV shows the game, and every
 
 | Game | Big screen | What your swing does |
 | --- | --- | --- |
-| 🎳 **Swing Bowl** | [`bowling/`](bowling/) | Hold the button, swing, let go. Swing speed sets ball speed, the swing path sets the direction, a wrist twist adds hook. |
+| 🎳 **Swing Bowl** | [`bowling/`](bowling/) | A 3D bowling alley. Hold the button, swing, let go. Swing speed sets ball speed, the swing path sets the direction, a wrist twist adds hook. |
 | ⛳ **Swing Golf** | [`golf/`](golf/) | A 3D course (three.js). Pick a club, take it back, swing through: speed sets distance, path pushes or pulls the ball, wrist roll draws or fades it. Putts use a soft stroke. |
-| ⚾ **Home Run Derby** | [`baseball/`](baseball/) | No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. |
+| ⚾ **Home Run Derby** | [`baseball/`](baseball/) | A 3D ballpark. No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. |
 
 Up to 6 players per game. The big screen can also be played with the keyboard for testing, and bowling has a [one-phone solo mode](bowling/solo.html).
 
@@ -41,12 +41,15 @@ Public brokers are shared and unauthenticated. That's fine for game moves, but d
 
 ### Games
 
-- `js/engine.js`, `js/render.js`, `js/game.js`: bowling physics (ball, hook, pin collisions), 10-frame scoring, pseudo-3D canvas lane.
+- `js/three-kit.js`: shared 3D pieces: the jointed player figure and its pose blending, painted canvas textures, grass shading, confetti and fireworks.
+- `js/engine.js`, `js/game.js`: bowling physics (ball, hook, pin collisions) and 10-frame scoring.
+- `js/bowl3d.js`: the 3D alley: glossy lanes with real reflections, neon signs and lighting, five lanes of pins, an animated bowler (approach, backswing, slide, follow-through), a rolling ball, chase and pin-deck cameras, and confetti for strikes and spares. `js/render.js` is the 2D fallback when WebGL isn't available.
 - `js/golf-engine.js`: course data, surfaces, ball flight (drag, lift, sidespin, wind), roll, putting, clubs calibrated to target distances.
 - `js/golf-game.js`: golf turns (farthest from the hole plays next), penalties, scorecard and the 2D minimap.
 - `js/golf3d.js`: the 3D course: a physically based sky with image-based lighting, soft shadows, a painted mown-grass course with close-up grass detail, a water shader, instanced forests, mountains, clouds, an animated golfer, chase and landing cameras, hole flyovers and a Wii-style putting grid.
-- `js/ball-engine.js`, `js/ball-game.js`: baseball pitches (fastball, changeup, curve, slider), timing-based contact, ball flight, ballpark renderer, timing ring.
-- `vendor/three/`: three.js r170 (MIT, see `vendor/three/LICENSE`).
+- `js/ball-engine.js`, `js/ball-game.js`: baseball pitches (fastball, changeup, curve, slider), timing-based contact, ball flight, the derby rules and HUD.
+- `js/ball3d.js`: the 3D ballpark at night: light towers, a cheering crowd, a scoreboard, a pitcher with a full windup and leg kick, a batter who loads, swings and follows through, fielders who chase the ball, a broadcast-style camera for hits, and fireworks for home runs.
+- `vendor/three/`: three.js r170 with its Sky and Reflector add-ons (MIT, see `vendor/three/LICENSE`).
 
 ## Run locally
 

@@ -11,7 +11,9 @@
 </head>
 <body class="solo">
 <div class="stage">
-  <canvas id="c"></canvas>
+  <div id="view3d" style="position:absolute;inset:0"></div>
+  <canvas id="c" hidden></canvas>
+  <div class="vignette"></div>
   <div id="hud"></div>
 </div>
 <div class="soloinfo" id="info"></div>
@@ -41,10 +43,17 @@
 <script src="../js/game.js"></script>
 <script src="../js/motion.js"></script>
 <script src="../js/pad.js"></script>
-<script>
-(function () {
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+<script type="module">
+import { Bowl3D } from '../js/bowl3d.js';
+{
   'use strict';
   const $ = id => document.getElementById(id);
+  // 3D alley if the browser can do WebGL, otherwise the classic 2D lane
+  function make3D() {
+    try { return new Bowl3D($('view3d'), { quality: 'low' }); }
+    catch (e) { console.warn('3D unavailable, using 2D lane', e); $('c').hidden = false; return null; }
+  }
   const sfx = new SB.Sfx();
   $('name').value = SB.store.get('name', '');
   $('flip').checked = SB.store.get('flip', '0') === '1';
@@ -53,8 +62,9 @@
   $('flipSteer').checked = SB.store.get('flipSteer', '0') === '1';
 
   let info = null, hintTimer = 0;
-  const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
+  const app = new SB.GameApp({ canvas: $('c'), renderer: make3D(), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
 
+  window.__bowl = app;   // handy for debugging from the console
   const pad = SB.makeSwingPad({
     mode: 'release', button: $('hold'), meter: $('meter'),
     canSwing: () => !!(info && info.state === 'aim' && !info.over),
@@ -97,7 +107,7 @@
     if (!app.info().players.length) app.addPlayer(name);
     $('sheet').hidden = true;
   };
-})();
+}
 </script>
 </body>
 </html>

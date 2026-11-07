@@ -22,12 +22,12 @@
 
   const PITCHES = [
     { id: 'FB', name: 'Fastball',  speed: [25, 28.5], brk: [0, -0.05], weight: 5 },
-    { id: 'CH', name: 'Changeup',  speed: [20, 22], brk: [0.05, -0.2], weight: 2 },
-    { id: 'CB', name: 'Curveball', speed: [21, 23.5], brk: [-0.3, -0.35], weight: 2 },
-    { id: 'SL', name: 'Slider',    speed: [23, 25.5], brk: [-0.32, -0.1], weight: 2 },
+    { id: 'CH', name: 'Changeup',  speed: [20, 22], brk: [-0.05, -0.2], weight: 2 },
+    { id: 'CB', name: 'Curveball', speed: [21, 23.5], brk: [0.3, -0.35], weight: 2 },
+    { id: 'SL', name: 'Slider',    speed: [23, 25.5], brk: [0.32, -0.1], weight: 2 },
   ];
   const ZONE = { x: 0.22, y0: 0.5, y1: 1.05 };
-  const RELEASE = { x: 0.45, y: 1.85, z: 17.2 };
+  const RELEASE = { x: -0.42, y: 1.9, z: 17.3 };   // right-handed pitcher: arm side is third base (-x)
 
   function rnd(rng, a, b) { return a + (b - a) * rng(); }
 

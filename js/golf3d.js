@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import { Sky } from '../vendor/three/Sky.js';
+import { autoResolution } from './three-kit.js';
 
 const GOLF = self.GOLF;
 const { CLUBS } = GOLF;
@@ -272,7 +273,8 @@ export class Golf3D {
   constructor(container) {
     this.container = container;
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    r.setPixelRatio(ratio); this._autoRes = autoResolution(r, ratio);
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.62;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -594,6 +596,7 @@ export class Golf3D {
 
     this._golfer(game, club, dt, now);
     this._camera(game, dt, now, flying, putting);
+    this._autoRes();
     this.renderer.render(this.scene, this.camera);
   }
 

@@ -5,14 +5,17 @@
 
   const COLORS = ['#3fa9f5', '#ff5a5f', '#ffd23f', '#3ddc97', '#c77dff', '#ff9f1c'];
   const MAX_PLAYERS = 6;
+  const RELEASE_MS = 260;   // bowler's slide + release before the ball is on the lane
 
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   class GameApp {
-    constructor({ canvas, hud, sfx, onUpdate }) {
+    // renderer: optional 3D view (same interface as the 2D Renderer: follow, snapCamera, drawScene)
+    constructor({ canvas, hud, sfx, onUpdate, renderer }) {
       this.lane = new Lane();
       this.match = new Match();
-      this.renderer = new Renderer(canvas);
+      this.renderer = renderer || new Renderer(canvas);
+      this.pendingThrow = null; this.throwAt = 0; this.celebrate = null;
       this.sfx = sfx || null;
       this.onUpdate = onUpdate || (() => {});
       this.state = 'aim';
@@ -55,7 +58,7 @@
       if (!m.players.length) { this.newGame(); return; }
       if (i < m.cur) m.cur--;
       else if (wasCur && !m.over) {
-        this.lane.resetPins(); this.lane.ball = null; this.pending = null; this.holding = null;
+        this.lane.resetPins(); this.lane.ball = null; this.pending = null; this.holding = null; this.pendingThrow = null;
         this.state = 'aim';
         this.renderer.snapCamera();
         if (m.cur >= m.players.length) {
@@ -70,7 +73,7 @@
     newGame() {
       this.match.reset();
       this.lane.resetPins();
-      this.lane.ball = null;
+      this.lane.ball = null; this.pendingThrow = null;
       this.state = 'aim';
       this.renderer.snapCamera();
       this._renderScores();
@@ -107,9 +110,10 @@
         case 'throw':
           if (!myTurn) return false;
           this.holding = null;
-          const steer = clamp(+msg.steer || 0, -0.09, 0.09);
-          this.lane.throwBall({ x: p.startX, aim: steer, speed: msg.speed, spin: msg.spin || 0 });   // direction comes only from the swing
-          this.state = 'rolling';
+          // the bowler's release animation plays first; the ball leaves the hand at the foul line
+          this.pendingThrow = { x: p.startX, aim: clamp(+msg.steer || 0, -0.09, 0.09), speed: msg.speed, spin: msg.spin || 0, at: performance.now() + RELEASE_MS };
+          this.throwAt = performance.now();
+          this.state = 'throwing';
           this.lastThrow = { speed: msg.speed, spin: msg.spin || 0 };
           this._renderTurn();
           this._emit();
@@ -123,9 +127,15 @@
 
     // ---------- loop ----------
     _tick(now) {
+      requestAnimationFrame(this._tick);   // next frame first, so one bad frame can't stop the game
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
 
+      if (this.state === 'throwing' && this.pendingThrow && now >= this.pendingThrow.at) {
+        const t = this.pendingThrow; this.pendingThrow = null;
+        this.lane.throwBall(t);   // direction comes only from the swing
+        this.state = 'rolling';
+      }
       if (this.state === 'rolling') {
         this.lane.update(dt);
         for (const e of this.lane.drainEvents()) this._onEvent(e);
@@ -147,9 +157,11 @@
         ball: this.lane.ball || (aiming ? { x: p.startX, z: -0.25, dist: 0 } : null),
         ballColor: p ? p.color : COLORS[0],
         aim: aiming ? { x: p.startX, aim: 0, color: p.color + '88' } : null,   // straight-line guide from the start position
+        // extra detail for the 3D view
+        state: this.state, holding: this.holding !== null, throwAt: this.throwAt, celebrate: this.celebrate,
+        startX: p ? p.startX : 0, color: p ? p.color : COLORS[0], dt,
       });
       if (this.state === 'rolling') this._renderPins();
-      requestAnimationFrame(this._tick);
     }
 
     _onEvent(e) {
@@ -163,6 +175,7 @@
         this.state = 'result';
         this.resultTimer = r.kind === 'strike' ? 2.4 : 1.8;
         this._flash(r.message, r.kind);
+        this.celebrate = { kind: r.kind, at: performance.now() };
         if (s) { if (r.kind === 'strike' || r.kind === 'spare') s.fanfare(r.kind); else if (e.gutter) s.sad(); }
         this._renderScores();
         this._renderPins();

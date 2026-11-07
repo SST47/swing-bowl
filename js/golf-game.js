@@ -199,6 +199,7 @@
 
     // ---------- loop ----------
     _tick(now) {
+      requestAnimationFrame(t => this._tick(t));   // next frame first, so one bad frame can't stop the game
       const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
       if (this.state === 'flight' && this.anim) {
         const a = this.anim;
@@ -214,7 +215,6 @@
       if (this.view) this.view.render(this, dt, now);
       this.minimap.draw(this, now);
       this._windArrow();
-      requestAnimationFrame(t => this._tick(t));
     }
 
     // ---------- HUD ----------

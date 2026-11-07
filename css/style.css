@@ -133,6 +133,7 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .sheet input { width: 100%; font: inherit; font-size: 28px; letter-spacing: .3em; text-align: center; text-transform: uppercase; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--text); margin: 8px 0 14px; }
 .sheet input.name { font-size: 20px; letter-spacing: 0; text-transform: none; }
 .sheet label { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); margin: 10px 0; }
+.sheet input[type=checkbox] { width: 22px; height: 22px; flex: none; margin: 0; padding: 0; accent-color: #8b5cf6; }
 .sheet .btn { width: 100%; margin-top: 6px; }
 .sheet select { font: inherit; background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
 

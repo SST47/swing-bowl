@@ -8,7 +8,9 @@
 </head>
 <body>
 <div class="stage">
-  <canvas id="c"></canvas>
+  <div id="view3d" style="position:absolute;inset:0"></div>
+  <canvas id="c" hidden></canvas>
+  <div class="vignette"></div>
   <div id="hud"></div>
   <div class="power" id="power" hidden><div></div></div>
   <div class="corner" id="corner">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="mute">🔊</button></div>
@@ -43,14 +45,21 @@
 <script src="../js/game.js"></script>
 <script src="../js/net.js"></script>
 <script src="../js/room.js"></script>
-<script>
-(function () {
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+<script type="module">
+import { Bowl3D } from '../js/bowl3d.js';
+{
   'use strict';
   const $ = id => document.getElementById(id);
+  // 3D alley if the browser can do WebGL, otherwise the classic 2D lane
+  function make3D() {
+    try { return new Bowl3D($('view3d'), { quality: 'high' }); }
+    catch (e) { console.warn('3D unavailable, using 2D lane', e); $('c').hidden = false; return null; }
+  }
   const sfx = new SB.Sfx();
   let keyboardSpin = 0, room, overShown = false;
 
-  const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+  const app = new SB.GameApp({ canvas: $('c'), renderer: make3D(), hud: $('hud'), sfx, onUpdate: info => {
     if (room) { room.push(); room.renderLobby(); }
     if (info.state === 'over' && !overShown) { overShown = true; setTimeout(() => { if (app.info().over) room.show(); }, 4000); }
     if (info.state !== 'over') overShown = false;
@@ -62,6 +71,7 @@
   $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
 
   // ---------- room: QR, lobby, phones <-> players, kicking ----------
+  window.__bowl = app;   // handy for debugging from the console
   room = new SB.Room({
     namespace: 'swingbowl/v1/', storageKey: 'sb-room', game: app, hideOn: ['throw'],
     stateFor: (idx, info) => Object.assign({}, info, { yourTurn: idx !== null && idx === info.cur && info.state === 'aim' && !info.over }),
@@ -107,7 +117,7 @@
     const s = keyboardSpin === 0 ? 'no spin' : (keyboardSpin < 0 ? 'hook right ' : 'hook left ') + Math.abs(keyboardSpin * 100) + '%';
     app._flash('SPIN: ' + s.toUpperCase(), 'info');
   }
-})();
+}
 </script>
 </body>
 </html>
