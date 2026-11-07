@@ -8,7 +8,8 @@
 </head>
 <body>
 <div class="stage">
-  <canvas id="c"></canvas>
+  <div id="view3d" style="position:absolute;inset:0"></div>
+  <div class="vignette"></div>
   <div id="hud"></div>
   <div class="power" id="power" hidden><div></div></div>
   <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="mute">🔊</button></div>
@@ -42,16 +43,20 @@
 <script src="../js/room.js"></script>
 <script src="../js/golf-engine.js"></script>
 <script src="../js/golf-game.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+<script type="module">
+import { Golf3D } from '../js/golf3d.js';
+{
   const $ = id => document.getElementById(id);
   const sfx = new SB.Sfx();
   addEventListener('pointerdown', () => sfx.unlock()); addEventListener('keydown', () => sfx.unlock());
   $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
 
   let room, overShown = false;
-  const game = new GOLF.GolfGame({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+  let view = null;
+  try { view = new Golf3D($('view3d')); }
+  catch (e) { console.error(e); $('view3d').innerHTML = '<div class="card" style="margin:20vh auto;text-align:center">This browser can’t show the 3D course (WebGL is off or unsupported). Try Chrome, Edge, Safari or Firefox.</div>'; }
+  const game = new GOLF.GolfGame({ hud: $('hud'), sfx, view, onUpdate: info => {
     if (room) { room.push(); room.renderLobby(); }
     if (info.over && !overShown) { overShown = true; setTimeout(() => { if (game.info().over) room.show(); }, 5000); }
     if (!info.over) overShown = false;
@@ -64,6 +69,7 @@
     }),
   });
   room.start();
+  window.__room = room;   // handy for debugging from the console
 
   // keyboard play
   let charging = null, kPath = 0, kSide = 0;
@@ -95,7 +101,8 @@
     charging = null; power.hidden = true; bar.style.width = '0';
     game.input(game.info().cur, { t: 'swing', power: p, path: kPath, side: kSide });
   });
-})();
+  window.__golf = game;
+}
 </script>
 </body>
 </html>

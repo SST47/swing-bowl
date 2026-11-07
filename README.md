@@ -1,47 +1,52 @@
-# 🎳 Swing Bowl (+ ⛳ Golf, ⚾ Home Run Derby)
+# Swing Sports
 
-Wii-style motion bowling that runs in the browser. A laptop or TV shows the lane, and each player's **iPhone (or Android phone) becomes the controller**: hold the button, swing your arm, let go. Nothing to install.
+Wii-style motion sports in the browser. A laptop or TV shows the game, and every player's **phone is the controller**: scan the QR code, then swing. Nothing to install.
 
-**Play:** https://sst47.github.io/swing-bowl/
+**Play:** https://sst47.github.io/swing-sports/
 
-- ⛳ **Swing Golf:** https://sst47.github.io/swing-bowl/golf/ (3 holes, 8 clubs, wind, water, bunkers, sloped greens).
-- ⚾ **Home Run Derby:** https://sst47.github.io/swing-bowl/baseball/ (10 swings each; timing decides pull vs. opposite field).
+| Game | Big screen | What your swing does |
+| --- | --- | --- |
+| 🎳 **Swing Bowl** | [`bowling/`](bowling/) | Hold the button, swing, let go. Swing speed sets ball speed, the swing path sets the direction, a wrist twist adds hook. |
+| ⛳ **Swing Golf** | [`golf/`](golf/) | A 3D course (three.js). Pick a club, take it back, swing through: speed sets distance, path pushes or pulls the ball, wrist roll draws or fades it. Putts use a soft stroke. |
+| ⚾ **Home Run Derby** | [`baseball/`](baseball/) | No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. |
 
-All three work the same way: open the game on a laptop/TV, scan the QR code with each phone, swing the phone.
+Up to 6 players per game. The big screen can also be played with the keyboard for testing, and bowling has a [one-phone solo mode](bowling/solo.html).
 
-## Modes
+## How it works
 
-| Page | What it's for |
-| --- | --- |
-| `tv.html` | The big screen. Shows the lane, the scoreboard and a QR code/room code for phones to join. Up to 6 players. Also playable with the keyboard. |
-| `controller.html` | The phone controller. Reads the gyroscope and sends throws to the big screen. |
-| `solo.html` | One phone is both the controller and the screen. |
+### The phone controller (`js/motion.js`, `js/pad.js`)
 
-## How a throw works
+One `SwingDetector` reads the phone's gyroscope (`devicemotion`) and fused orientation (`deviceorientation`). Each game uses one of three modes:
 
-- **Position:** ◀ ▶ to move along the foul line. There are no aim buttons; direction comes only from your swing.
-- **Power:** while you hold the button, the phone samples `DeviceMotionEvent.rotationRate`. Release speed comes from the peak rotation rate in the last 0.6 s before you let go. It doesn't depend on orientation, so any grip works.
-- **Hook:** wrist twist around the phone's long axis (`rotationRate.gamma`) in the last 0.35 s, integrated into degrees. It has a dead zone, and lefties can flip its sign in settings.
-- **Direction:** the swing plane of the forward swing is compared with the backswing's in world coordinates. Swing straight back and through for a straight ball, or pull across your body to send it left or right (*Swing sensitivity*: low/normal/high, plus a flip option). This uses the fused `deviceorientation` stream converted to rotation matrices, not raw gyro axes, and removes wrist twist first, so hooking the ball doesn't change its direction.
-- **Fallback:** if there are no motion sensors (desktop browser, permission denied), the button switches to "hold to charge, slide to spin".
+- **release** (bowling): hold the button, swing, let go. The throw is read from the last ~0.6 s before release.
+- **impact** (golf): hold the button through the swing. The motion is split into a backswing and a forward swing along the backswing's rotation axis. The hit fires by itself at the fastest point of the *forward* swing, so a pause at the top never counts. A forward-only swing counts when the button comes up.
+- **auto** (baseball): no button. The first fast rotation is the swing, timestamped at its peak, then the detector re-arms.
 
-Keyboard on the big screen: `←` `→` move · `Q` `E` spin · hold `Space` for power · `N` new game · `M` mute.
+What gets measured:
+- **Power:** peak rotation speed. It doesn't depend on orientation, so any grip works.
+- **Spin / curve:** wrist twist around the phone's long axis near the peak.
+- **Direction:** the forward swing's plane compared with the backswing's, in world coordinates from the orientation stream. Wrist twist is removed first, so a hook doesn't change direction.
 
-## Golf and baseball
+iOS only exposes motion sensors over HTTPS and after a tap (`DeviceMotionEvent.requestPermission()`); GitHub Pages provides the HTTPS. After you type a name, the pages clear the input history, so swinging can't trigger iOS "Shake to Undo". If there are no sensors, the controller falls back to "hold to charge, release".
 
-- **Impact mode:** in golf and baseball you hold the button through the whole swing. The hit fires by itself at the fastest point of the swing (`SwingDetector.watchImpact`), so there's no release to time.
-- **Golf:** swing speed → distance for the chosen club (◀ ▶ on the phone; the best club is pre-selected). Swing path vs. backswing → push/pull, wrist roll → draw/fade. Putts use a softer threshold. Ball flight has drag, lift, sidespin and wind. Each surface has its own bounce and roll, and greens are sloped. Farthest from the hole plays next. Water/OOB costs one stroke and replays from the same spot. Max 5 over par per hole.
-- **Baseball:** the pitcher throws fastballs, changeups, curves and sliders. The phone timestamps the swing and converts it to the big screen's clock (round-trip clock sync over the relay), so network delay doesn't spoil the timing. ±130 ms from the plate is contact: early pulls, late goes the other way. Bat speed and timing quality set exit velocity and launch angle. Fence 100 m down the lines, 122 m to centre.
+### Phone ↔ screen link (`js/net.js`, `js/room.js`)
 
-## How the phone talks to the screen
+The site is fully static. Phones and the big screen exchange small JSON messages through free public MQTT brokers over secure WebSockets (EMQX, HiveMQ, Mosquitto) using MQTT.js. Each game and room code gets its own topic. The screen listens on all brokers, and each phone uses the first one it can reach. This works on any network that can load a web page. Direct WebRTC was tried first, but it often fails between a phone and a laptop.
 
-The pages are fully static, with no server of our own. Phones and the big screen exchange small JSON messages through **free public MQTT brokers over secure WebSockets** ([EMQX](https://www.emqx.com/en/mqtt/public-mqtt5-broker), [HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/), [Mosquitto](https://test.mosquitto.org/)), using [MQTT.js](https://github.com/mqttjs/MQTT.js). Each room code gets its own topic (`swingbowl/v1/<ROOM>/…`). The screen listens on all the brokers at once, and each phone uses the first one it can reach.
+For baseball, the phone and screen keep their clocks in sync with round trips. The swing moment is sent on the screen's clock, so relay delay doesn't spoil the timing. The screen also learns and removes the room's systematic lag, such as TV display delay.
 
-Why a relay rather than a direct peer-to-peer (WebRTC) link? WebRTC often fails between a phone and a laptop: routers without NAT hairpinning, VPNs, phones on cellular. With no relay to fall back on, it just times out. A WebSocket relay works on any network that can load a web page. A throw is a single message, so the extra ~50–150 ms is unnoticeable in bowling.
+The host can remove players (✕ on a player in **Players / QR**). A removed phone can only come back by tapping "Join again".
 
-Notes:
-- Public brokers are shared and unauthenticated. Anyone who guessed your room code's topic could read the throws. Fine for a game, but don't send anything private this way.
-- iOS only exposes motion sensors over **HTTPS** and after a tap (`DeviceMotionEvent.requestPermission()`). GitHub Pages provides the HTTPS.
+Public brokers are shared and unauthenticated. That's fine for game moves, but don't send anything private this way.
+
+### Games
+
+- `js/engine.js`, `js/render.js`, `js/game.js`: bowling physics (ball, hook, pin collisions), 10-frame scoring, pseudo-3D canvas lane.
+- `js/golf-engine.js`: course data, surfaces, ball flight (drag, lift, sidespin, wind), roll, putting, clubs calibrated to target distances.
+- `js/golf-game.js`: golf turns (farthest from the hole plays next), penalties, scorecard and the 2D minimap.
+- `js/golf3d.js`: the 3D course: a physically based sky with image-based lighting, soft shadows, a painted mown-grass course with close-up grass detail, a water shader, instanced forests, mountains, clouds, an animated golfer, chase and landing cameras, hole flyovers and a Wii-style putting grid.
+- `js/ball-engine.js`, `js/ball-game.js`: baseball pitches (fastball, changeup, curve, slider), timing-based contact, ball flight, ballpark renderer, timing ring.
+- `vendor/three/`: three.js r170 (MIT, see `vendor/three/LICENSE`).
 
 ## Run locally
 
@@ -49,28 +54,14 @@ Notes:
 python3 -m http.server 8000      # or: npx serve
 ```
 
-Open `http://localhost:8000/tv.html` to test on the keyboard. To use a real phone as the controller, you need HTTPS. Push to GitHub Pages, or tunnel your local server, e.g. `npx localtunnel --port 8000` or `ngrok http 8000`.
+Open `http://localhost:8000/` and pick a game; keyboard controls are listed in each lobby. To use a real phone as the controller you need HTTPS: push to GitHub Pages, or tunnel the local server (`npx localtunnel --port 8000`, `ngrok http 8000`).
 
-## Code layout
+## Tests
 
+```bash
+node tests/engine.test.js     # bowling scoring + pin physics
+node tests/motion.test.js     # swing direction from simulated orientation streams
+node tests/detector.test.js   # hit detection: golf swings with a pause at the top, putts, bat swings
+node tests/golf.test.js       # club distances, curve, wind, putting, hazards
+node tests/baseball.test.js   # flight distances and the contact model
 ```
-js/engine.js   physics (ball, hook, pin collisions) + 10-frame scoring; no DOM, testable in Node
-js/render.js   pseudo-3D canvas renderer (lane, pins, ball, follow camera)
-js/game.js     game loop, turns, HUD (scoreboard, pin indicator, messages)
-js/audio.js    synthesized sound effects (Web Audio, no files)
-js/motion.js   swing detector (DeviceMotion → speed + spin)
-js/pad.js      shared phone-controller UI logic
-js/net.js      screen/phone link over public MQTT brokers (WebSockets) + clock sync
-js/room.js     shared big-screen lobby/room logic (golf, baseball)
-js/golf-*.js   golf course, physics, game + renderer
-js/ball-*.js   baseball pitches, contact, flight, game + 3D ballpark renderer
-tests/         node tests for scoring and physics
-```
-
-Run the tests with `node tests/engine.test.js`, `node tests/motion.test.js` (simulated swings, checks the direction estimate), `node tests/golf.test.js` and `node tests/baseball.test.js`.
-
-## Ideas
-
-- Run a private relay (or add WebRTC with a TURN server) instead of the public brokers.
-- More games on the same controller: tennis (swing timing), golf (backswing length), boxing.
-- Spare-pickup challenge mode and saved high scores.

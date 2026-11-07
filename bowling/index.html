@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swing Bowl · Big screen</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div class="power" id="power" hidden><div></div></div>
+  <div class="corner" id="corner">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="mute">🔊</button></div>
+
+  <div class="overlay" id="lobby">
+    <div class="card lobby">
+      <div class="qr" id="qr">Loading QR…</div>
+      <div>
+        <h1><span>Swing Bowl</span></h1>
+        <p>Scan with your iPhone camera to turn the phone into a controller. Up to 6 players.</p>
+        <div class="code" id="code">····</div>
+        <div class="joinurl" id="joinurl"></div>
+        <div class="status" id="status">Opening room…</div>
+        <div class="players" id="players"></div>
+        <div class="row">
+          <button class="btn" id="start">Start game</button>
+          <button class="btn ghost" id="newgame" hidden>New game</button>
+        </div>
+        <p style="font-size:13px;margin:10px 0 0"><a href="../">← All games</a></p>
+        <div class="keys">No phone handy? Play here: <kbd>←</kbd><kbd>→</kbd> move · <kbd>Q</kbd><kbd>E</kbd> spin · hold <kbd>Space</kbd> for power, release to throw · <kbd>N</kbd> new game</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../js/engine.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/render.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/net.js"></script>
+<script src="../js/room.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  let keyboardSpin = 0, room, overShown = false;
+
+  const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+    if (room) { room.push(); room.renderLobby(); }
+    if (info.state === 'over' && !overShown) { overShown = true; setTimeout(() => { if (app.info().over) room.show(); }, 4000); }
+    if (info.state !== 'over') overShown = false;
+  } });
+
+  // ---------- sound unlock ----------
+  const unlock = () => sfx.unlock();
+  addEventListener('pointerdown', unlock); addEventListener('keydown', unlock);
+  $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
+
+  // ---------- room: QR, lobby, phones <-> players, kicking ----------
+  room = new SB.Room({
+    namespace: 'swingbowl/v1/', storageKey: 'sb-room', game: app, hideOn: ['throw'],
+    stateFor: (idx, info) => Object.assign({}, info, { yourTurn: idx !== null && idx === info.cur && info.state === 'aim' && !info.over }),
+  });
+  room.start();
+  window.__room = room;   // handy for debugging from the console
+  const hideLobby = () => room.hide();
+  const startNewGame = () => room.newGame();
+
+  // ---------- keyboard play ----------
+  let charging = null;
+  const power = $('power'), powerBar = power.firstElementChild;
+  function ensurePlayer() { if (!app.info().players.length) app.addPlayer('Player 1'); }
+  addEventListener('keydown', e => {
+    if (e.repeat && e.code === 'Space') return;
+    const info = app.info();
+    if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    if (e.code === 'KeyN') { startNewGame(); hideLobby(); return; }
+    if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
+    ensurePlayer();
+    const cur = app.info().cur;
+    if (e.code === 'ArrowLeft') app.input(cur, { t: 'move', d: -1 });
+    if (e.code === 'ArrowRight') app.input(cur, { t: 'move', d: 1 });
+    if (e.code === 'KeyQ') { keyboardSpin = Math.max(-1, keyboardSpin - 0.25); flashSpin(); }
+    if (e.code === 'KeyE') { keyboardSpin = Math.min(1, keyboardSpin + 0.25); flashSpin(); }
+    if (e.code === 'Space' && info.state === 'aim' && !info.over) {
+      hideLobby();
+      charging = performance.now(); power.hidden = false;
+      app.input(cur, { t: 'hold', on: true });
+      (function grow() { if (charging === null) return; powerBar.style.width = Math.min(100, (performance.now() - charging) / 14) + '%'; requestAnimationFrame(grow); })();
+    }
+  });
+  addEventListener('keyup', e => {
+    if (e.code !== 'Space' || charging === null) return;
+    const p = Math.min(1, (performance.now() - charging) / 1400);
+    charging = null; power.hidden = true; powerBar.style.width = '0';
+    const cur = app.info().cur;
+    app.input(cur, { t: 'hold', on: false });
+    app.input(cur, { t: 'throw', speed: 3 + p * 7.5, spin: keyboardSpin });
+  });
+  function flashSpin() {
+    const s = keyboardSpin === 0 ? 'no spin' : (keyboardSpin < 0 ? 'hook right ' : 'hook left ') + Math.abs(keyboardSpin * 100) + '%';
+    app._flash('SPIN: ' + s.toUpperCase(), 'info');
+  }
+})();
+</script>
+</body>
+</html>

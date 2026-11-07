@@ -51,7 +51,7 @@
         e.stopPropagation();
         if (!b.classList.contains('confirm')) {
           b.classList.add('confirm'); b.textContent = 'Remove?';
-          setTimeout(() => { if (b.isConnected) { b.classList.remove('confirm'); b.textContent = '✕'; } }, 3000);
+          setTimeout(() => { if (b.isConnected) { b.classList.remove('confirm'); b.textContent = '✕'; } }, 5000);
           return;
         }
         const [kind, key] = b.dataset.kick.split(':');
