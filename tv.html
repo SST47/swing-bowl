@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swing Bowl · Big screen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div class="power" id="power" hidden><div></div></div>
+  <div class="corner" id="corner">Join: <b id="cornerCode">····</b> <button id="showLobby">Show QR</button> <button id="mute">🔊</button></div>
+
+  <div class="overlay" id="lobby">
+    <div class="card lobby">
+      <div class="qr" id="qr">Loading QR…</div>
+      <div>
+        <h1><span>Swing Bowl</span></h1>
+        <p>Scan with your iPhone camera to turn the phone into a controller. Up to 6 players.</p>
+        <div class="code" id="code">····</div>
+        <div class="joinurl" id="joinurl"></div>
+        <div class="status" id="status">Opening room…</div>
+        <div class="players" id="players"></div>
+        <div class="row">
+          <button class="btn" id="start">Start game</button>
+          <button class="btn ghost" id="newgame" hidden>New game</button>
+        </div>
+        <div class="keys">No phone handy? Play here: <kbd>←</kbd><kbd>→</kbd> move · <kbd>↑</kbd><kbd>↓</kbd> aim · <kbd>Q</kbd><kbd>E</kbd> spin · hold <kbd>Space</kbd> for power, release to throw · <kbd>N</kbd> new game</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>window.Peer || document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>')</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+<script src="js/net.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  const conns = new Map();     // peer id -> { cid, idx (player index) or null, queued }
+  const byClient = new Map();  // controller's stable id -> player index
+  const queue = [];            // { cid, name } waiting for the next game
+  let keyboardSpin = 0;
+
+  let overShown = false;
+  const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: info => {
+    pushState(info); renderLobby();
+    if (info.state === 'over' && !overShown) { overShown = true; setTimeout(() => { if (app.info().over) { $('lobby').hidden = false; renderLobby(); } }, 4000); }
+    if (info.state !== 'over') overShown = false;
+  } });
+
+  // ---------- sound unlock ----------
+  const unlock = () => sfx.unlock();
+  addEventListener('pointerdown', unlock); addEventListener('keydown', unlock);
+  $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
+
+  // ---------- networking ----------
+  const host = new SB.Host({
+    onStatus(kind, text) {
+      const st = $('status');
+      st.classList.toggle('err', kind === 'error' || kind === 'offline');
+      if (kind === 'open') {
+        try { sessionStorage.setItem('sb-room', text); } catch (e) {}
+        $('code').textContent = text; $('cornerCode').textContent = text;
+        const url = new URL('controller.html', location.href); url.search = '?room=' + text; url.hash = '';
+        $('joinurl').textContent = url.href;
+        drawQR(url.href);
+        st.textContent = 'Room open. Waiting for players…';
+      } else st.textContent = text;
+      if (kind === 'offline') { $('qr').textContent = 'Phone controllers need an internet connection. You can still play with the keyboard.'; }
+    },
+    onJoin(id) { conns.set(id, { cid: null, idx: null }); },
+    onLeave(id) { conns.delete(id); renderLobby(); },
+    onMessage(id, msg) {
+      const c = conns.get(id); if (!c || !msg) return;
+      if (msg.t === 'hello') {
+        const name = String(msg.name || '').trim().slice(0, 14);
+        c.cid = String(msg.id || id);
+        if (byClient.has(c.cid)) { c.idx = byClient.get(c.cid); if (name) app.renamePlayer(c.idx, name); }
+        else if (app.canJoinNow()) { c.idx = app.addPlayer(name); byClient.set(c.cid, c.idx); }
+        else if (!queue.find(q => q.cid === c.cid)) { queue.push({ cid: c.cid, name }); }
+        if (c.idx !== null && c.idx >= 0) sfx.unlock();
+        renderLobby(); pushState(app.info());
+        return;
+      }
+      if (msg.t === 'name' && c.idx !== null) { app.renamePlayer(c.idx, msg.name); return; }
+      if (msg.t === 'newgame') { startNewGame(); return; }
+      if (c.idx === null || c.idx < 0) return;
+      if (msg.t === 'throw') hideLobby();
+      app.input(c.idx, msg);
+    },
+  });
+  let pref = null; try { pref = sessionStorage.getItem('sb-room'); } catch (e) {}
+  host.start(pref);
+
+  function pushState(info) {
+    host.broadcast(id => {
+      const c = conns.get(id) || {};
+      const idx = c.idx ?? null;
+      const queued = !!(c.cid && queue.find(q => q.cid === c.cid));
+      return { t: 'state', you: idx, queued, yourTurn: idx !== null && idx === info.cur && info.state === 'aim' && !info.over, ...info };
+    });
+  }
+
+  function startNewGame() {
+    while (queue.length) { const q = queue.shift(); const i = app.addPlayer(q.name); if (i >= 0) byClient.set(q.cid, i); for (const c of conns.values()) if (c.cid === q.cid) c.idx = i; }
+    app.newGame();
+    renderLobby();
+  }
+
+  // ---------- lobby ----------
+  function drawQR(text) {
+    const el = $('qr'); el.innerHTML = '';
+    if (typeof QRCode === 'function') new QRCode(el, { text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+    else el.textContent = 'Open the link below on your phone';
+  }
+  function renderLobby() {
+    const info = app.info();
+    const online = new Set([...conns.values()].map(c => c.idx));
+    $('players').innerHTML = info.players.map((p, i) => `<span class="chip ${online.has(i) ? '' : 'off'}"><i style="background:${p.color}"></i>${p.name.replace(/</g, '&lt;')}</span>`).join('')
+      + queue.map(q => `<span class="chip off">${(q.name || 'Player').replace(/</g, '&lt;')} · next game</span>`).join('');
+    $('start').hidden = info.started && !info.over;
+    $('start').textContent = info.over ? 'Play again' : info.players.length ? 'Start game' : 'Play with keyboard';
+    $('newgame').hidden = !(queue.length && info.started && !info.over);
+    $('newgame').textContent = 'Restart with new players';
+  }
+  function hideLobby() { $('lobby').hidden = true; }
+  $('start').onclick = () => { if (!app.info().players.length) app.addPlayer('Player 1'); if (app.info().over) startNewGame(); hideLobby(); };
+  $('newgame').onclick = () => { startNewGame(); hideLobby(); };
+  $('showLobby').onclick = () => { $('lobby').hidden = false; renderLobby(); };
+  $('lobby').addEventListener('click', e => { if (e.target === $('lobby') && app.info().players.length) hideLobby(); });
+
+  // ---------- keyboard play ----------
+  let charging = null;
+  const power = $('power'), powerBar = power.firstElementChild;
+  function ensurePlayer() { if (!app.info().players.length) app.addPlayer('Player 1'); }
+  addEventListener('keydown', e => {
+    if (e.repeat && e.code === 'Space') return;
+    const info = app.info();
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
+    if (e.code === 'KeyN') { startNewGame(); hideLobby(); return; }
+    if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
+    ensurePlayer();
+    const cur = app.info().cur;
+    if (e.code === 'ArrowLeft') app.input(cur, { t: 'move', d: -1 });
+    if (e.code === 'ArrowRight') app.input(cur, { t: 'move', d: 1 });
+    if (e.code === 'ArrowUp' || e.code === 'KeyD') app.input(cur, { t: 'aim', d: 1 });
+    if (e.code === 'ArrowDown' || e.code === 'KeyA') app.input(cur, { t: 'aim', d: -1 });
+    if (e.code === 'KeyQ') { keyboardSpin = Math.max(-1, keyboardSpin - 0.25); flashSpin(); }
+    if (e.code === 'KeyE') { keyboardSpin = Math.min(1, keyboardSpin + 0.25); flashSpin(); }
+    if (e.code === 'Space' && info.state === 'aim' && !info.over) {
+      hideLobby();
+      charging = performance.now(); power.hidden = false;
+      app.input(cur, { t: 'hold', on: true });
+      (function grow() { if (charging === null) return; powerBar.style.width = Math.min(100, (performance.now() - charging) / 14) + '%'; requestAnimationFrame(grow); })();
+    }
+  });
+  addEventListener('keyup', e => {
+    if (e.code !== 'Space' || charging === null) return;
+    const p = Math.min(1, (performance.now() - charging) / 1400);
+    charging = null; power.hidden = true; powerBar.style.width = '0';
+    const cur = app.info().cur;
+    app.input(cur, { t: 'hold', on: false });
+    app.input(cur, { t: 'throw', speed: 3 + p * 7.5, spin: keyboardSpin });
+  });
+  function flashSpin() {
+    const s = keyboardSpin === 0 ? 'no spin' : (keyboardSpin < 0 ? 'hook right ' : 'hook left ') + Math.abs(keyboardSpin * 100) + '%';
+    app._flash('SPIN: ' + s.toUpperCase(), 'info');
+  }
+
+  renderLobby();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1026">
+<title>Swing Bowl · Solo</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="solo">
+<div class="stage">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+</div>
+<div class="soloinfo" id="info"></div>
+<div class="controls" id="controls">
+  <div class="grp"><small>Position</small><div class="row"><button id="left">◀</button><button id="right">▶</button></div><div class="meter" style="margin-top:6px;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden"><div id="meter" style="height:100%;width:0;background:linear-gradient(90deg,#3ddc97,#ffd23f,#ff3d7f)"></div></div></div>
+  <button class="hold" id="hold"><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button>
+  <div class="grp"><small>Aim</small><div class="row"><button id="aimL">↖</button><button id="aimR">↗</button></div></div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h2>🎳 Solo bowling</h2>
+    <p>Your phone is both the lane and the ball. Hold the big button, swing the phone like a bowling ball, and let go of the button as your arm comes forward. Then watch the pins fly.</p>
+    <p style="font-size:14px"><b>Grip it tight.</b> Don’t actually let go of the phone!</p>
+    <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
+    <button class="btn" id="go">Start &amp; enable motion</button>
+    <p style="font-size:13px">Want a big screen and friends? Open <b>tv.html</b> on a laptop or TV and use <b>controller.html</b> on each phone.</p>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+<script src="js/motion.js"></script>
+<script src="js/pad.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  $('name').value = SB.store.get('name', '');
+  $('flip').checked = SB.store.get('flip', '0') === '1';
+
+  let info = null, hintTimer = 0;
+  const app = new SB.GameApp({ canvas: $('c'), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
+
+  const pad = SB.setupHold({
+    button: $('hold'), meter: $('meter'),
+    canThrow: () => !!(info && info.state === 'aim' && !info.over),
+    isOver: () => !!(info && info.over),
+    onNewGame: () => app.newGame(),
+    onHold: on => app.input(0, { t: 'hold', on }),
+    onThrow: r => {
+      app.input(0, { t: 'throw', speed: r.speed, spin: r.spin });
+      const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
+      showInfo(`${(r.speed * 3.6).toFixed(0)} km/h · ${sp}`);
+    },
+    onHint: t => showInfo(t),
+  });
+
+  function showInfo(t) { $('info').textContent = t; clearTimeout(hintTimer); hintTimer = setTimeout(() => { $('info').textContent = ''; }, 3000); }
+  function render() {
+    if (!info) return;
+    $('controls').classList.toggle('away', !(info.state === 'aim' || info.over));
+    pad.setLabels();
+  }
+
+  SB.repeatButton($('left'), () => app.input(0, { t: 'move', d: -1 }));
+  SB.repeatButton($('right'), () => app.input(0, { t: 'move', d: 1 }));
+  SB.repeatButton($('aimL'), () => app.input(0, { t: 'aim', d: -1 }));
+  SB.repeatButton($('aimR'), () => app.input(0, { t: 'aim', d: 1 }));
+
+  $('go').onclick = async () => {
+    sfx.unlock();
+    const name = $('name').value.trim().slice(0, 14) || 'You';
+    SB.store.set('name', name === 'You' ? '' : name); SB.store.set('flip', $('flip').checked ? '1' : '0');
+    pad.det.flipSpin = $('flip').checked;
+    await pad.enable();
+    SB.keepAwake();
+    if (!app.info().players.length) app.addPlayer(name);
+    $('sheet').hidden = true;
+  };
+})();
+</script>
+</body>
+</html>

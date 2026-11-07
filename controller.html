@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1026">
+<title>Swing Bowl · Controller</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="pad">
+  <div class="top">
+    <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
+    <button class="gear" id="settings">⚙︎ Settings</button>
+  </div>
+  <div class="state" id="state">Not connected</div>
+  <div class="meter"><div id="meter"></div></div>
+  <div class="readout" id="readout"></div>
+  <div class="dpad">
+    <div class="grp"><small>Position</small><div class="row"><button id="left">◀</button><button id="right">▶</button></div></div>
+    <div class="grp"><small>Aim</small><div class="row"><button id="aimL">↖</button><button id="aimR">↗</button></div></div>
+  </div>
+  <div class="holdwrap">
+    <button class="hold" id="hold" disabled><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h2>🎳 Join the game</h2>
+    <p>Enter the code on the big screen.</p>
+    <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+    <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
+    <button class="btn" id="go">Connect &amp; enable motion</button>
+    <p class="status" id="sheetStatus"></p>
+    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. Twist your wrist at release for a hook.</p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>window.Peer || document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>')</script>
+<script src="js/motion.js"></script>
+<script src="js/net.js"></script>
+<script src="js/pad.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const store = SB.store;
+  let cid = store.get('cid', null);
+  if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
+
+  const params = new URLSearchParams(location.search);
+  $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
+  $('name').value = store.get('name', '');
+  $('flip').checked = store.get('flip', '0') === '1';
+
+  let st = null, enabled = false, hintTimer = 0;
+
+  const client = new SB.Client({
+    onStatus(kind, text) {
+      if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for the game…'); }
+      else if (kind === 'error' || kind === 'closed') {
+        $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect';
+        $('hold').disabled = true;
+      } else $('sheetStatus').textContent = text;
+    },
+    onMessage(m) { if (m && m.t === 'state') { st = m; render(); } },
+  });
+
+  const pad = SB.setupHold({
+    button: $('hold'), meter: $('meter'),
+    canThrow: () => !!(st && st.yourTurn),
+    isOver: () => !!(st && st.over),
+    onNewGame: () => client.send({ t: 'newgame' }),
+    onHold: on => client.send({ t: 'hold', on }),
+    onThrow: r => {
+      client.send({ t: 'throw', speed: r.speed, spin: r.spin });
+      const km = (r.speed * 3.6).toFixed(0);
+      const sp = Math.abs(r.spin) < 0.05 ? 'straight' : (r.spin > 0 ? '↰ ' : '↱ ') + Math.round(Math.abs(r.spin) * 100) + '%';
+      $('readout').innerHTML = `Speed <b>${km} km/h</b> · Spin <b>${sp}</b>`;
+    },
+    onHint: hint,
+  });
+
+  function hint(text) {
+    setState(text, false);
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(render, 2600);
+  }
+  function setState(text, go) { const el = $('state'); el.textContent = text; el.classList.toggle('go', !!go); }
+
+  function render() {
+    if (!st) return;
+    const me = st.you !== null && st.players[st.you];
+    if (me) { $('dot').style.background = me.color; $('myname').textContent = me.name; document.documentElement.style.setProperty('--accent', me.color); }
+    const cur = st.players[st.cur];
+    $('hold').disabled = !(st.yourTurn || st.over);
+    pad.setLabels();
+    if (st.queued) setState('You’re in! You’ll join at the next game.');
+    else if (st.over) setState('Game over! Tap the button for a new game.', true);
+    else if (st.yourTurn) setState(`Your turn · Frame ${st.frame} · Ball ${st.ball}`, true);
+    else if (st.state !== 'aim' && cur && st.cur === st.you) setState('Rolling…');
+    else if (cur) setState(`Waiting for ${cur.name}…`);
+    if (me) document.title = `${me.name} · Swing Bowl`;
+  }
+
+  // position / aim
+  SB.repeatButton($('left'), () => st && st.yourTurn && client.send({ t: 'move', d: -1 }));
+  SB.repeatButton($('right'), () => st && st.yourTurn && client.send({ t: 'move', d: 1 }));
+  SB.repeatButton($('aimL'), () => st && st.yourTurn && client.send({ t: 'aim', d: -1 }));
+  SB.repeatButton($('aimR'), () => st && st.yourTurn && client.send({ t: 'aim', d: 1 }));
+
+  $('settings').onclick = () => { $('sheet').hidden = false; $('go').textContent = client.open ? 'Save' : 'Connect & enable motion'; $('sheetStatus').textContent = ''; };
+  $('room').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+
+  $('go').onclick = async () => {
+    const room = $('room').value.trim().toUpperCase();
+    const name = $('name').value.trim().slice(0, 14);
+    if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
+    store.set('room', room); store.set('name', name); store.set('flip', $('flip').checked ? '1' : '0');
+    pad.det.flipSpin = $('flip').checked;
+    if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
+    if (client.open && client.code === room) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
+    client.connect(room, { t: 'hello', id: cid, name });
+  };
+})();
+</script>
+</body>
+</html>
