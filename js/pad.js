@@ -26,6 +26,7 @@
    *   canSwing()        is it this player's turn?
    *   onArm(on)         button down/up (release, impact) or ready tap (auto)
    *   onSwing(result)   release: { speed, spin, steer, steerDeg }  impact/auto: { power, peakT, twist, dirDeg, tap }
+   *   onBlocked?(result) auto: a swing came while it wasn't this player's turn
    *   onHint(text)
    *   isOver?(), onNewGame?()   when the game is over the button becomes "new game"
    *   labels?: { hold, sub, tapHold, tapSub, over, overSub }
@@ -45,7 +46,7 @@
     const det = new SwingDetector({
       mode, minPeak: opts.minPeak, fullPeak: opts.fullPeak,
       onImpact: r => {
-        if (mode === 'auto') { if (opts.canSwing()) opts.onSwing(r); return; }
+        if (mode === 'auto') { if (opts.canSwing()) opts.onSwing(r); else if (opts.onBlocked) opts.onBlocked(r); return; }
         if (!down) return;
         finish();
         opts.onSwing(r);
@@ -173,5 +174,32 @@
     set(k, v) { try { localStorage.setItem('sb-' + k, v); } catch (e) {} },
   };
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo });
+  /*
+   * Moving between games: the big screen tells every phone { t: 'switch', game, room } and goes to
+   * the new game; each phone follows to that game's controller and rejoins the same room code.
+   */
+  const GAMES = { bowling: 'Bowling', golf: 'Golf', baseball: 'Baseball', tennis: 'Tennis' };
+  function followSwitch(m) {
+    if (!m || !GAMES[m.game] || !/^[A-Z]{4}$/.test(m.room || '')) return false;
+    location.href = new URL(`../${m.game}/controller.html?room=${m.room}&join=1`, location.href).href;
+    return true;
+  }
+  // Arrived from a switch: join right away (the big screen is expecting us), and ask for one tap,
+  // which phones need before they share motion data.
+  function autoJoin({ connect, enable, title }) {
+    const q = new URLSearchParams(location.search);
+    if (q.get('join') !== '1' || !/^[A-Z]{4}$/.test(q.get('room') || '')) return false;
+    history.replaceState(null, '', location.pathname + '?room=' + q.get('room'));   // a reload shouldn't auto-join again
+    connect(q.get('room'));
+    const ov = document.createElement('div');
+    ov.className = 'tapgo';
+    ov.innerHTML = `<button type="button"><span>▶</span><b>${esc(title)}</b><small>Tap to start</small></button>`;
+    document.body.appendChild(ov);
+    ov.querySelector('button').addEventListener('click', async () => { ov.remove(); await enable(); });
+    return true;
+  }
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES });
 })(self);

@@ -7,6 +7,12 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const GAMES = [
+    { id: 'bowling', icon: '🎳', name: 'Bowling', sub: 'Swing and let go' },
+    { id: 'golf', icon: '⛳', name: 'Golf', sub: 'Three holes' },
+    { id: 'baseball', icon: '⚾', name: 'Home Run Derby', sub: 'Swing at the pitch' },
+    { id: 'tennis', icon: '🎾', name: 'Tennis', sub: 'Two players, or vs the computer' },
+  ];
 
   class Room {
     /*
@@ -38,7 +44,11 @@
 
     start() {
       let pref = null; try { pref = sessionStorage.getItem(this.o.storageKey); } catch (e) {}
+      // coming from another game: same room code, same players (their phones are on their way)
+      const handoff = this._handoff();
+      if (handoff) pref = handoff.room;
       this.host.start(pref);
+      if (handoff) this._adopt(handoff.players);
       setInterval(() => this.push(), root.SB.HEARTBEAT);
       $('start').onclick = () => { const g = this.o.game; if (!g.info().players.length) g.addPlayer('Player 1'); if (g.info().over) this.newGame(); this.hide(); };
       $('newgame').onclick = () => { this.newGame(); this.hide(); };
@@ -57,7 +67,66 @@
         const [kind, key] = b.dataset.kick.split(':');
         if (kind === 'p') this.kick(+key); else this.kickQueued(key);
       });
+      this._switcher();
       this.renderLobby();
+      if (handoff) this.hide();
+    }
+
+    // ---------- switching games mid-match ----------
+    _handoff() {
+      try {
+        const h = JSON.parse(sessionStorage.getItem('sb-handoff') || 'null');
+        sessionStorage.removeItem('sb-handoff');
+        if (h && h.to === this.o.gameId && Date.now() - h.at < 120000 && /^[A-Z]{4}$/.test(h.room)) return h;
+      } catch (e) {}
+      return null;
+    }
+    _adopt(players) {
+      const g = this.o.game;
+      for (const p of (players || []).slice(0, 6)) {
+        const i = g.addPlayer(String(p.name || '').slice(0, 14));
+        if (i >= 0 && p.cid) this.byClient.set(String(p.cid), i);
+      }
+    }
+    _switcher() {
+      const id = this.o.gameId;
+      if (!id) return;
+      const ov = document.createElement('div');
+      ov.className = 'switcher'; ov.hidden = true;
+      ov.innerHTML = `<div class="card"><h2>Switch game</h2><p>Everyone's phone comes along, with the same room code. This game ends here.</p>
+        <div class="games">${GAMES.map(g => `<button type="button" data-game="${g.id}" class="${g.id === id ? 'now' : ''}"><span>${g.icon}</span>${g.name}<small>${g.id === id ? 'playing now' : g.sub}</small></button>`).join('')}</div>
+        <button type="button" class="btn ghost" data-close>Keep playing</button></div>`;
+      ov.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (e.target === ov || (b && b.hasAttribute('data-close'))) { ov.hidden = true; return; }
+        if (b && b.dataset.game && b.dataset.game !== id) this.switchTo(b.dataset.game);
+      });
+      document.body.appendChild(ov);
+      this.switcherEl = ov;
+      const corner = $('corner');
+      if (corner) { const b = document.createElement('button'); b.textContent = 'Switch game'; b.onclick = () => { ov.hidden = false; }; corner.insertBefore(b, $('mute') || null); }
+      const card = $('lobby') && $('lobby').querySelector('.lobby > div:last-child');
+      if (card) {
+        const row = document.createElement('div'); row.className = 'switchrow';
+        row.innerHTML = '<span>Or play:</span>' + GAMES.filter(g => g.id !== id).map(g => `<button type="button" class="btn ghost" data-game="${g.id}">${g.icon} ${g.name}</button>`).join('');
+        row.addEventListener('click', e => { const b = e.target.closest('button[data-game]'); if (b) this.switchTo(b.dataset.game); });
+        card.insertBefore(row, card.querySelector('.keys'));
+      }
+      addEventListener('keydown', e => { if (e.code === 'KeyG' && !e.repeat) ov.hidden = !ov.hidden; });
+    }
+    // Go to another game, taking everyone along: the phones are told to follow, and the new page
+    // opens the same room code with the same players in the same order.
+    switchTo(id) {
+      if (this.switching) return;
+      this.switching = true;
+      const info = this.o.game.info(), code = this.host.code;
+      const owner = i => { for (const [cid, k] of this.byClient) if (k === i) return cid; return null; };
+      const players = info.players.map((p, i) => ({ name: p.name, cid: owner(i) })).concat(this.queue.map(q => ({ name: q.name, cid: q.cid })));
+      try { sessionStorage.setItem('sb-handoff', JSON.stringify({ to: id, room: code, players, at: Date.now() })); } catch (e) {}
+      const msg = { t: 'switch', game: id, room: code };
+      if (code) { this.host.broadcast(() => msg); setTimeout(() => this.host.broadcast(() => msg), 250); }
+      if (this.switcherEl) this.switcherEl.querySelector('p').textContent = 'Switching… phones are following along.';
+      setTimeout(() => { location.href = new URL(`../${id}/`, location.href).href; }, code ? 600 : 0);
     }
 
     hide() { $('lobby').hidden = true; }
@@ -89,7 +158,11 @@
           if (!m.rejoin) { c.idx = null; this.host.send(id, { t: 'kicked' }); return; }
           this.kicked.delete(c.cid);
         }
+        const owned = new Set(this.byClient.values());
+        const spare = g.info().players.findIndex((p, i) => !owned.has(i));
         if (this.byClient.has(c.cid)) { c.idx = this.byClient.get(c.cid); if (name) g.renamePlayer(c.idx, name); }
+        // a player made from the keyboard or the Start button, with no phone yet: this phone takes it over
+        else if (spare >= 0 && !g.info().started) { c.idx = spare; this.byClient.set(c.cid, spare); g.renamePlayer(spare, name || g.info().players[spare].name); }
         else if (g.canJoinNow()) { c.idx = g.addPlayer(name); this.byClient.set(c.cid, c.idx); }
         else if (!this.queue.find(q => q.cid === c.cid)) this.queue.push({ cid: c.cid, name });
         this.renderLobby(); this.push();
@@ -158,5 +231,5 @@
     }
   }
 
-  root.SB = Object.assign(root.SB || {}, { Room, esc });
+  root.SB = Object.assign(root.SB || {}, { Room, esc, GAME_LIST: GAMES });
 })(self);

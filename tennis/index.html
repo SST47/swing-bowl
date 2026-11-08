@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swing Tennis · Big screen</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="stage">
+  <div id="view3d" style="position:absolute;inset:0"></div>
+  <div class="vignette"></div>
+  <div id="hud"></div>
+  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="mute">🔊</button></div>
+
+  <div class="overlay" id="lobby">
+    <div class="card lobby">
+      <div class="qr" id="qr">Loading QR…</div>
+      <div>
+        <h1>🎾 <span>Swing Tennis</span></h1>
+        <p>Scan with your phone camera to use it as your racket. Two players face off; on your own you play the computer. First to 2 games wins.</p>
+        <div class="code" id="code">····</div>
+        <div class="joinurl" id="joinurl"></div>
+        <div class="status" id="status">Opening room…</div>
+        <div class="players" id="players"></div>
+        <div class="row">
+          <button class="btn" id="start">Start game</button>
+          <button class="btn ghost" id="newgame" hidden>New game</button>
+        </div>
+        <div class="keys">No phone handy? <kbd>Space</kbd> swings for the near player, <kbd>Enter</kbd> for the far one, when the ring closes on the ball · <kbd>N</kbd> new match</div>
+        <p style="font-size:13px"><a href="../">← All games</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/net.js"></script>
+<script src="../js/room.js"></script>
+<script src="../js/tennis-engine.js"></script>
+<script src="../js/tennis-game.js"></script>
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+<script type="module">
+import { Tennis3D } from '../js/tennis3d.js';
+{
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const sfx = new SB.Sfx();
+  addEventListener('pointerdown', () => sfx.unlock()); addEventListener('keydown', () => sfx.unlock());
+  $('mute').onclick = () => { sfx.muted = !sfx.muted; $('mute').textContent = sfx.muted ? '🔇' : '🔊'; sfx.unlock(); };
+
+  let room, overShown = false;
+  let view = null;
+  try { view = new Tennis3D($('view3d')); }
+  catch (e) { console.error(e); $('view3d').innerHTML = '<div class="card" style="margin:20vh auto;text-align:center">This browser can’t show the 3D court (WebGL is off or unsupported). Try Chrome, Edge, Safari or Firefox.</div>'; }
+  const game = new TENNIS.TennisGame({ hud: $('hud'), sfx, view, onUpdate: info => {
+    if (room) { room.push(); room.renderLobby(); }
+  } });
+  room = new SB.Room({
+    gameId: 'tennis', namespace: 'swingtennis/v1/', storageKey: 'st-room', game,
+    stateFor: (idx, info) => {
+      const end = idx === null ? -1 : info.court.indexOf(idx);
+      const note = end >= 0 ? game.note[end] : null;
+      return {
+        game: 'tennis', state: info.state, onCourt: end >= 0, end, yourTurn: end >= 0 && !info.over,
+        serving: end >= 0 && info.server === end && (info.state === 'serve' || info.state === 'toss'),
+        hitting: end >= 0 && info.hitting === end, games: info.games, points: info.points, court: info.court, note,
+      };
+    },
+  });
+  room.start();
+  window.__room = room;   // handy for debugging from the console
+  window.__game = game;   // handy for debugging from the console
+
+  // keyboard play: Space swings for the near player, Enter for the far one
+  const ensure = () => { if (!game.info().players.length) game.addPlayer('Player 1'); };
+  addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter') e.preventDefault();
+    if (e.repeat) return;
+    if (e.code === 'KeyN') { room.newGame(); room.hide(); return; }
+    if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
+    ensure();
+    const end = e.code === 'Space' ? 0 : e.code === 'Enter' ? 1 : -1;
+    if (end < 0) return;
+    room.hide();
+    const idx = game.court[end];
+    if (idx === null) { if (end === 1 && game.players.length < 2) { game.addPlayer('Player 2'); } return; }
+    game.input(idx, { t: 'swing', power: 0.75, at: performance.now() });
+  });
+}
+</script>
+</body>
+</html>

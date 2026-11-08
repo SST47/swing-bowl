@@ -54,7 +54,7 @@
   $('name').value = store.get('name', '');
   $('lefty').checked = store.get('ball-lefty', '0') === '1';
 
-  let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0;
+  let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0, lastNote = null, speedText = '';
   const client = new SB.Client({
     id: cid, namespace: 'swingball/v1/',
     onStatus(kind, text) {
@@ -63,6 +63,7 @@
       else $('sheetStatus').textContent = text;
     },
     onMessage(m) {
+      if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
       if (m && m.t === 'state' && !kicked) { st = m; render(); }
     },
@@ -70,15 +71,29 @@
 
   // Auto mode: no holding while you swing. Every fast swing on your turn is sent,
   // stamped with the moment of peak bat speed on the big screen's clock.
+  let armTap = false;
   const pad = SB.makeSwingPad({
     mode: 'auto', button: $('hold'), meter: $('meter'), minPeak: 350, fullPeak: 1000,
     labels: { hold: 'READY', sub: 'tap, then just swing', tapHold: 'SWING', tapSub: 'tap and let go to swing' },
     canSwing: () => !!(st && st.yourTurn),
-    onArm: () => { client.send({ t: 'arm', on: true, lefty: $('lefty').checked }); setState('Ready! Watch the screen and swing.', true); },
+    onArm: () => {
+      if (!st || !st.yourTurn || st.pitching) return;   // READY is for between pitches
+      client.send({ t: 'arm', on: true, lefty: $('lefty').checked });
+      armTap = pad.tapMode;   // without motion, this press called for the pitch: letting go isn't a swing
+      setState(pad.tapMode ? 'Ready! Tap when the ball reaches you.' : 'Ready! Watch the screen and swing.', true);
+    },
     onSwing: r => {
+      if (r.tap && armTap) { armTap = false; return; }
       const at = client.synced ? client.hostTime(r.peakT) : null;
       client.send({ t: 'swing', power: r.power, at, lefty: $('lefty').checked });
-      $('readout').innerHTML = `Bat speed <b>${Math.round(r.power * 100)}%</b>`;
+      speedText = `Bat speed <b>${Math.round(r.power * 100)}%</b>`;
+      $('readout').innerHTML = speedText;
+    },
+    onBlocked: () => {
+      if (!st) hint('Not connected to the big screen yet.');
+      else if (st.queued) hint('You’re in the next derby. Hang on!');
+      else if (st.over) hint('The derby is over. Start a new one on the big screen.');
+      else { const cur = st.players[st.cur]; hint(cur ? `Not your turn: ${cur.name} is batting.` : 'Not your turn yet.'); }
     },
     onHint: hint,
   });
@@ -102,11 +117,17 @@
     const me = st.you !== null && st.players[st.you];
     if (me) { $('dot').style.background = me.color; $('myname').textContent = me.name; $('tally').innerHTML = `Home runs <b>${me.hrs}</b> · Longest <b>${me.longest ? me.longest + ' m' : '–'}</b>`; }
     $('hold').disabled = !st.yourTurn;
+    // what the big screen made of the last swing (or that no swing reached it)
+    if (st.note && (!lastNote || st.note.at !== lastNote.at)) {
+      lastNote = st.note;
+      $('readout').innerHTML = (speedText ? speedText + ' · ' : '') + SB.esc(st.note.text);
+      speedText = '';
+    }
     if (Date.now() < hintUntil) return;
     const cur = st.players[st.cur];
     if (st.queued) setState('You’re in! You’ll bat in the next derby.');
     else if (st.over) setState('Derby over! Ask the big screen for a new one.');
-    else if (st.yourTurn) setState(st.pitching ? 'Here it comes… swing!' : `You’re up! ${st.swingsLeft} swings left. Tap READY, then swing.`, true);
+    else if (st.yourTurn) setState(st.pitching ? (pad.tapMode ? 'Here it comes… tap!' : 'Here it comes… swing!') : pad.tapMode ? `You’re up! ${st.swingsLeft} swings left. Tap to call the pitch, then tap to swing.` : `You’re up! ${st.swingsLeft} swings left. Tap READY, then swing.`, true);
     else if (cur) setState(`${cur.name} is batting…`);
   }
 
@@ -129,6 +150,12 @@
     kicked = false;
     client.connect(room, { t: 'hello', id: cid, name });
   };
+  // arrived from a game switch on the big screen: rejoin straight away, one tap turns on motion
+  SB.autoJoin({
+    title: 'Home Run Derby',
+    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('ball-room', room); setState('Joining Home Run Derby…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
+    enable: async () => { if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); } },
+  });
 })();
 </script>
 </body>

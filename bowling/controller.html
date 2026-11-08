@@ -75,6 +75,7 @@
       } else $('sheetStatus').textContent = text;
     },
     onMessage(m) {
+      if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
       if (m && m.t === 'state' && !kicked) { st = m; render(); }
     },
@@ -163,6 +164,12 @@
     kicked = false;
     client.connect(room, { t: 'hello', id: cid, name });
   };
+  // arrived from a game switch on the big screen: rejoin straight away, one tap turns on motion
+  SB.autoJoin({
+    title: 'Bowling',
+    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('room', room); setState('Joining Bowling…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
+    enable: async () => { if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); } },
+  });
 })();
 </script>
 </body>

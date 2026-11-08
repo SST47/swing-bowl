@@ -125,7 +125,7 @@
     return Math.max(-0.09, Math.min(0.09, steer));
   }
 
-  const AUTO_COOLDOWN_MS = 800;
+  const AUTO_COOLDOWN_MS = 350;   // short, so winding up (or a practice swing) can't block the real swing right after
   const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 

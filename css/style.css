@@ -197,7 +197,43 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,10,20,0.32) 100%); }
 
 /* ---------- hub ---------- */
+.modes.games { grid-template-columns: repeat(2, 1fr); }   /* four games: two by two */
+@media (max-width: 560px) { .modes.games { grid-template-columns: 1fr; } }
 .games .mode { display: flex; flex-direction: column; }
 .games .mode .ico { font-size: 44px; }
 .games .mode p { flex: 1; }
 .games .mode .go { display: inline-block; margin-top: 14px; font-weight: 700; color: var(--cyan); }
+
+/* arrived on a phone from a game switch: one tap to carry on */
+.tapgo { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(8, 12, 30, 0.92); }
+.tapgo button { display: grid; gap: 8px; place-items: center; width: min(78vw, 340px); aspect-ratio: 1; border-radius: 50%; border: 0;
+  background: radial-gradient(circle at 35% 30%, #7c5cff, #4a2fd6); color: #fff; font: 800 34px system-ui, sans-serif; box-shadow: 0 20px 60px rgba(90, 60, 255, 0.45); }
+.tapgo button span { font-size: 54px; line-height: 1; }
+.tapgo button small { font: 600 16px system-ui, sans-serif; opacity: 0.85; }
+
+/* game switcher on the big screen */
+.switcher { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(6, 10, 24, 0.72); }
+.switcher[hidden] { display: none; }
+.switcher .card { width: min(92vw, 760px); }
+.switcher h2 { margin: 0 0 4px; }
+.switcher .games { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 8px; }
+.switcher .games button { display: grid; gap: 6px; padding: 18px 12px; border-radius: 16px; border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06); color: inherit; font: 700 18px system-ui, sans-serif; cursor: pointer; }
+.switcher .games button span { font-size: 42px; }
+.switcher .games button small { font: 500 13px system-ui, sans-serif; opacity: 0.7; }
+.switcher .games button:hover { border-color: #7c5cff; background: rgba(124, 92, 255, 0.18); }
+.switcher .games button.now { opacity: 0.45; cursor: default; }
+.lobby .switchrow { margin-top: 10px; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lobby .switchrow > span { opacity: 0.85; margin-right: 2px; }
+.lobby .switchrow button { padding: 6px 11px; font-size: 13px; }
+
+/* tennis scoreboard */
+.hud table.tennis { border-collapse: collapse; font-size: 18px; }
+.hud table.tennis td { padding: 2px 8px; }
+.hud table.tennis td.srv { color: #d8ef3c; width: 10px; padding: 0 2px; }
+.hud table.tennis td.nm i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.hud table.tennis td.g { font-weight: 800; color: #ffd23f; text-align: right; }
+.hud table.tennis td.p { font-weight: 800; text-align: right; min-width: 34px; }
+
+/* keep the centre hint clear of the corner bar on narrow screens */
+@media (max-width: 1280px) { .hud .turn { bottom: 64px; } }

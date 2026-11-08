@@ -81,6 +81,31 @@
 
     thud() { if (this.ready) this._tone(70, 'sine', 0.4, 0.35); }
 
+    // tennis: racket on ball, ball on court, ball into the net, the crowd
+    pock(strength = 0.7) {
+      if (!this.ready) return;
+      const s = Math.max(0.2, Math.min(1, strength));
+      this._tone(520 + Math.random() * 60, 'sine', 0.22 * s + 0.08, 0.07);
+      this._burst(2400, 2.5, 0.18 + 0.3 * s, 0.05);
+    }
+    bounce() { if (this.ready) { this._tone(230, 'sine', 0.14, 0.08); this._burst(900, 2, 0.08, 0.05); } }
+    net() { if (this.ready) this._burst(300, 0.8, 0.25, 0.25); }
+    crowd(level = 0.7) {
+      if (!this.ready) return;
+      const t = this.ctx.currentTime, dur = 1.6 + level;
+      const src = this.ctx.createBufferSource(); src.buffer = this.noise;
+      const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 0.6;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12 + 0.18 * level, t + 0.15);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      // clapping: a fast flutter on the noise
+      const lfo = this.ctx.createOscillator(), lg = this.ctx.createGain(); lfo.frequency.value = 11; lg.gain.value = 0.5;
+      const amp = this.ctx.createGain(); amp.gain.value = 0.6;
+      lfo.connect(lg); lg.connect(amp.gain);
+      src.connect(bp); bp.connect(amp); amp.connect(g); g.connect(this.master);
+      src.start(t, Math.random()); src.stop(t + dur + 0.1); lfo.start(t); lfo.stop(t + dur + 0.1);
+    }
+
     fanfare(kind) {
       if (!this.ready) return;
       const notes = kind === 'strike' ? [523, 659, 784, 1047] : kind === 'spare' ? [523, 784, 1047] : [];

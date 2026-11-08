@@ -6,8 +6,9 @@
   const COLORS = ['#3fa9f5', '#ff5a5f', '#ffd23f', '#3ddc97', '#c77dff', '#ff9f1c'];
   const SWINGS = 10;
   const WINDUP = 1.15;         // s from the pitcher's first move to release
-  const GRACE = 0.8;           // s after the ball crosses the plate that we still wait for a (delayed) swing message
-  const BIAS_MAX = 0.15;       // s of systematic lag (TV delay, clock-sync skew) we learn and take out
+  const GRACE = 1.2;           // s after the ball crosses the plate that we still wait for a (delayed) swing message
+  const EARLY_CALL = 0.7;      // s after the plate to call an early swing a miss, if no better swing came in
+  const BIAS_MAX = 0.25;       // s of systematic lag (TV delay, clock-sync skew, late swingers) we learn and take out
   const HIT_SPEED = 1.15;      // replay speed of a batted ball
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => performance.now() / 1000;
@@ -25,6 +26,7 @@
       this.lastBall = null;     // where the last batted ball ended up
       this.lastOutcome = null;  // { type, at, dist }
       this.bias = 0;            // learned average lateness of swings in this room (s)
+      this.note = null;         // { text, at } what happened to the last swing, shown on the batter's phone
       this.WINDUP = WINDUP;
       this._buildHud(hud);
       this.last = performance.now();
@@ -75,6 +77,7 @@
         players: this.players.map(q => ({ name: q.name, color: q.color, hrs: q.hrs, longest: Math.round(q.longest) })),
         swingsLeft: p ? SWINGS - p.swings : SWINGS, hrs: p ? p.hrs : 0,
         pitching: this.state === 'windup' || this.state === 'pitch',
+        note: this.note,
       };
     }
 
@@ -94,31 +97,46 @@
       return false;
     }
 
+    _note(text) { this.note = { text, at: Date.now() }; this._emit(); }
+
     _swing(at, power) {
-      const tNow = now();
+      const tNow = now(), pt = this.pitch;
       // When the swing actually peaked, on this clock. The view times the bat's contact pose to it, so
       // the swing on screen lines up with the ball even though the message arrives a little later.
       this.swingAt = Math.max(tNow - 0.25, Math.min(tNow, at));
       if (this.sfx) this.sfx.unlock();
-      if (this.state !== 'pitch' || !this.pitch || this.pitch.judged || at < this.pitch.releaseT) {
-        if (this.state === 'wait' || this.state === 'windup') this._flash('WAIT FOR THE PITCH', 'info');
+      if (this.state !== 'pitch' || !pt || pt.judged) {
+        if (this.state === 'wait' || this.state === 'windup') { this._flash('WAIT FOR THE PITCH', 'info'); this._note('Too early: wait for the pitch'); }
         return;
       }
-      const pt = this.pitch, p = this.players[this.cur];
+      if (at < pt.releaseT) { this._flash('TOO EARLY · WAIT FOR THE PITCH', 'info'); this._note('Too early: the pitch wasn’t thrown yet'); return; }
+      const raw = at - pt.plateT, dt = raw - this._lag();
+      // Way early (a practice swing, or winding up)? Don't spend the pitch on it yet: a better-timed
+      // swing can still come. If none does, it's called a miss shortly after the ball goes by.
+      if (dt < -B.FOUL_WINDOW) { if (!pt.early || raw > pt.early.raw) pt.early = { raw, power, at }; return; }
+      this._judge(raw, power, at);
+    }
+
+    // The room's systematic lateness (TV picture delay, clock-sync skew, how this group swings),
+    // learned from recent swings and taken out so a swing that looks on time on screen is on time.
+    _lag() { return Math.max(-BIAS_MAX, Math.min(BIAS_MAX, this.bias)); }
+
+    _judge(raw, power, at) {
+      const pt = this.pitch, p = this.players[this.cur], tNow = now();
+      const dt = raw - this._lag();
       pt.judged = true;
       this.started = true;
       p.swings++;
-      // Learn the room's systematic lag (TV display delay, clock-sync skew) from swings near
-      // the ball, and take most of it out, so "on time" on screen counts as on time.
-      const raw = at - pt.plateT;
-      if (Math.abs(raw) < 0.45) this.bias = this.bias * 0.75 + raw * 0.25;
-      const dt = raw - Math.max(-BIAS_MAX, Math.min(BIAS_MAX, this.bias)) * 0.8;
+      if (Math.abs(dt) < 0.45) this.bias = this.bias * 0.7 + raw * 0.3;   // learn only from swings somewhere near the ball
       const c = contact(dt, power, pt.p, this.lefty);
       this.lastTiming = dt;
+      const ms = Math.round(dt * 1000), how = Math.abs(ms) < 40 ? 'perfect timing' : ms < 0 ? `early by ${-ms} ms` : `late by ${ms} ms`;
       if (c.kind === 'miss') {
+        this._note(`Missed: ${how}`);
         this._result(dt < 0 ? 'SWING AND A MISS · EARLY' : 'SWING AND A MISS · LATE', 'info', 1.3);
         return;
       }
+      this._note(`${c.kind === 'foul' ? 'Foul' : 'Hit'}: ${how}`);
       const u = Math.max(0.85, Math.min(1.05, (at - pt.releaseT) / pt.p.dur));
       const start = pitchPos(pt.p, u);
       const f = flight(start, c.ev, c.la, c.spray);
@@ -203,9 +221,12 @@
         } else if (this.state === 'pitch') {
           // Call the pitch only on the second frame past the grace period, so a swing message
           // that queued up behind a slow frame still gets processed first.
-          if (!this.pitch.judged && t > this.pitch.plateT + GRACE) {
+          const pt = this.pitch;
+          if (!pt.judged && pt.early && t > pt.plateT + EARLY_CALL) this._judge(pt.early.raw, pt.early.power, pt.early.at);
+          else if (!pt.judged && t > pt.plateT + GRACE) {
             if (this.pitch.expiring) {
               this.pitch.judged = true;
+              this._note('No swing reached the screen for that pitch');
               this._result(this.pitch.p.inZone ? 'STRIKE' : 'BALL', 'info', 0.9);
             } else this.pitch.expiring = true;
           }
