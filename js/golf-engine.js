@@ -136,6 +136,10 @@
     const dt = 1 / 240;
     const path = [{ x, y, z }];
     let t = 0, flying = vz > 0, landed = club.putter, carry = 0, maxZ = 0, spinLife = 1;
+    // A ball lying under a tree is played out from under its branches, so that tree can't block
+    // this shot (it used to stop every swing dead: 0 m, whatever you did).
+    const under = new Set(hole.trees.filter(tr => Math.hypot(from.x - tr.x, from.y - tr.y) < tr.r + 0.5));
+    let treeHit = false;
     let result = 'stop';
     for (let step = 0; step < 240 * 40; step++) {
       t += dt;
@@ -155,9 +159,13 @@
         maxZ = Math.max(maxZ, z);
         // trees
         for (const tr of hole.trees) {
-          if (z < tr.r * 1.9 + 3 && Math.hypot(x - tr.x, y - tr.y) < tr.r) {
+          if (under.has(tr)) continue;
+          // the canopy starts about 2.2 m up; below that only the trunk is in the way
+          const d = Math.hypot(x - tr.x, y - tr.y);
+          if (z < tr.r * 1.9 + 3 && (d < 0.4 || (d < tr.r && z > 2.2))) {
             vx *= -0.15; vy *= -0.15; vz = Math.min(vz, 0) * 0.3;
             x += vx * dt * 4; y += vy * dt * 4;
+            treeHit = true;
             break;
           }
         }
@@ -204,7 +212,7 @@
     }
     path.push({ x, y, z: 0 });
     if (!carry) carry = Math.hypot(x - from.x, y - from.y);
-    return { path, end: { x, y }, result, carry, total: Math.hypot(x - from.x, y - from.y), maxZ, time: t };
+    return { path, end: { x, y }, result, carry, total: Math.hypot(x - from.x, y - from.y), maxZ, time: t, treeHit };
   }
 
   // Tune each club's full-power ball speed so it reaches its target distance.
@@ -234,7 +242,22 @@
     return ({ '-3': 'ALBATROSS!', '-2': 'EAGLE!', '-1': 'BIRDIE!', '0': 'PAR', '1': 'BOGEY', '2': 'DOUBLE BOGEY', '3': 'TRIPLE BOGEY' })[d] || `+${d}`;
   }
 
-  const api = { HOLES, CLUBS, SURF, surfaceAt, simulate, suggestClub, scoreName, CUP_R, speedFor };
+  /*
+   * Where to aim from `ball` with `club`: straight at the pin, unless trees block that line. Then
+   * the aim swings out, a few degrees at a time either side, to the nearest line a full swing
+   * gets through cleanly (punching out of the trees, as a golfer would).
+   */
+  function clearAim(hole, ball, club) {
+    const direct = Math.atan2(hole.pin.y - ball.y, hole.pin.x - ball.x);
+    if (club.putter || !hole.trees.length) return direct;
+    const lie = surfaceAt(hole, ball);
+    const clear = a => { const r = simulate({ hole, from: ball, heading: a, club, power: 1, lie }); return !r.treeHit && r.result !== 'water' && r.result !== 'oob'; };
+    if (clear(direct)) return direct;
+    for (let d = 5; d <= 85; d += 5) for (const s of [1, -1]) { const a = direct + s * d * D2R; if (clear(a)) return a; }
+    return direct;
+  }
+
+  const api = { HOLES, CLUBS, SURF, surfaceAt, simulate, suggestClub, scoreName, CUP_R, speedFor, clearAim };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GOLF = api;
 })(typeof self !== 'undefined' ? self : this);

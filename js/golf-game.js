@@ -1,7 +1,7 @@
 /* Swing Golf — game flow, turns, scoring and HUD. Drawing is done by a view (the 3D course) plus a 2D minimap. */
 (function (root) {
   'use strict';
-  const { HOLES, CLUBS, surfaceAt, simulate, suggestClub, scoreName } = root.GOLF;
+  const { HOLES, CLUBS, surfaceAt, simulate, suggestClub, scoreName, clearAim } = root.GOLF;
   const COLORS = ['#ffffff', '#ffd23f', '#ff5a5f', '#3fa9f5', '#3ddc97', '#c77dff'];
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const LIE_TEXT = { tee: 'Tee', fairway: 'Fairway', fringe: 'Fringe', green: 'Green', rough: 'Rough', sand: 'Bunker' };
@@ -62,7 +62,20 @@
     get hole() { return HOLES[this.hi]; }
     get current() { return this.players[this.cur]; }
     _dist(p) { return Math.hypot(this.hole.pin.x - p.x, this.hole.pin.y - p.y); }
-    aimOf(p) { return Math.atan2(this.hole.pin.y - p.y, this.hole.pin.x - p.x); }
+    // Straight at the pin, or out of the trees when they're in the way (see GOLF.clearAim). Worked
+    // out once per ball position and club, since the view asks every frame.
+    aimOf(ball) {
+      const p = this.current, clubIdx = p && p.ball === ball ? p.club : suggestClub(this._dist(ball), surfaceAt(this.hole, ball));
+      const key = `${this.hi}|${ball.x.toFixed(2)}|${ball.y.toFixed(2)}|${clubIdx}`;
+      if (!this._aims || this._aimsHole !== this.hi) { this._aims = new Map(); this._aimsHole = this.hi; }
+      if (!this._aims.has(key)) this._aims.set(key, clearAim(this.hole, ball, CLUBS[clubIdx]));
+      return this._aims.get(key);
+    }
+    // aiming away from the pin to get out of the trees?
+    punchingOut(ball) {
+      const off = this.aimOf(ball) - Math.atan2(this.hole.pin.y - ball.y, this.hole.pin.x - ball.x);
+      return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) > 0.01;
+    }
 
     _setupHole(i) {
       this.hi = i;
@@ -234,6 +247,7 @@
       if (!p || this.over) { this.el.turn.innerHTML = this.over ? 'Round over' : ''; return; }
       const club = CLUBS[p.club];
       let t = `<b style="color:${p.color}">${esc(p.name)}</b> · Stroke ${p.strokes + 1} · ${Math.round(this._dist(p.ball))} m to pin · <b>${club.name}</b> · ${LIE_TEXT[p.lie] || ''}`;
+      if (this.state === 'address' && this.punchingOut(p.ball)) t += ' · aiming out of the trees';
       if (this.armed !== null && this.state === 'address') t += ' · <span class="swinging">swinging…</span>';
       this.el.turn.innerHTML = t;
     }

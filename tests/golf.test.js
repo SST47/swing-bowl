@@ -33,3 +33,20 @@ const w = G.simulate({ hole: G.HOLES[1], from: { x: 0, y: 0 }, heading: Math.PI 
 console.log('hole 2 weak shot ->', w.result); assert.strictEqual(w.result, 'water');
 assert.strictEqual(G.scoreName(3, 4), 'BIRDIE!'); assert.strictEqual(G.suggestClub(140, 'fairway'), 3);
 console.log('golf OK');
+
+// a ball lying under a tree (in the rough) can be played out: it used to go 0 m whatever the swing
+for (const h of G.HOLES) {
+  for (const tr of h.trees.slice(0, 6)) {
+    for (const from of [{ x: tr.x, y: tr.y }, { x: tr.x + tr.r * 0.8, y: tr.y }]) {
+      const lie = G.surfaceAt(h, from);
+      if (lie === 'oob' || lie === 'water') continue;
+      const heading = G.clearAim(h, from, G.CLUBS[3]);
+      const r = G.simulate({ hole: h, from, heading, club: G.CLUBS[3], power: 1, lie });
+      assert(r.total > 60 && !r.treeHit, `from under a tree on ${h.name}: ${r.total.toFixed(1)} m`);
+    }
+  }
+}
+// in the open the aim is straight at the pin
+const tee = G.HOLES[0].tee, pin = G.HOLES[0].pin;
+assert(Math.abs(G.clearAim(G.HOLES[0], tee, G.CLUBS[0]) - Math.atan2(pin.y - tee.y, pin.x - tee.x)) < 1e-9);
+console.log('shots from under trees get out, aim is straight at the pin in the open: ok');
