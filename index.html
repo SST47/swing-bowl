@@ -3,54 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0b1026">
-<title>Swing Sports · Wii-style motion games in your browser</title>
+<meta name="theme-color" content="#2e9f4f">
+<title>Swing Sports: party games where your phone is the controller</title>
+<link rel="preload" href="fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div class="landing">
-  <div class="wrap">
-    <h1><span>Swing Sports</span></h1>
-    <p class="lead">Wii-style sports in a web browser. The game runs on a laptop or TV, and every player's phone becomes the controller: scan the code, then swing. Nothing to install.</p>
+<main class="hub">
+  <div class="hub-wrap">
+    <header class="title">
+      <svg viewBox="0 0 760 260" aria-hidden="true">
+        <path class="trail" d="M 40 210 C 200 -40, 520 -40, 720 150"/>
+        <g id="flyball">
+          <circle r="17" fill="#e4f33b" stroke="#123120" stroke-width="4"/>
+          <path d="M -8 -14 Q 2 0 -8 14 M 8 -14 Q -2 0 8 14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          <animateMotion id="arc" dur="1.5s" begin="0.25s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.3 0.1 0.3 1" path="M 40 210 C 200 -40, 520 -40, 720 150"/>
+        </g>
+      </svg>
+      <h1>Swing<span class="l2">Sports</span></h1>
+    </header>
+    <p class="tagline">Your phone is the racket, the bat and the ball. The TV is the stadium.<small>Four games for up to six players, right in the web browser.</small></p>
 
-    <div class="modes games">
-      <a class="mode" href="bowling/">
-        <div class="ico">🎳</div>
-        <h3>Swing Bowl</h3>
-        <p>A neon 3D bowling alley. Hold the button, swing your arm, let go. Your swing sets the speed and direction, and a wrist twist hooks it. Up to 6 players.</p>
-        <span class="go">Open big screen →</span>
+    <div class="picks">
+      <a class="pick" href="bowling/">
+        <div class="art"><svg viewBox="0 0 400 168" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="168" fill="#e9b872"/>
+          <g stroke="#d49f58" stroke-width="2"><path d="M60 0 L20 168 M100 0 L80 168 M140 0 L135 168 M180 0 L180 168 M220 0 L225 168 M260 0 L265 168 M300 0 L320 168 M340 0 L380 168"/></g>
+          <path d="M0 0 H52 L4 168 H0 Z M400 0 H348 L396 168 H400 Z" fill="#5a3a22"/>
+          <g stroke="#123120" stroke-width="3">
+            <g fill="#fff"><ellipse cx="200" cy="42" rx="11" ry="17"/><ellipse cx="178" cy="34" rx="10" ry="15"/><ellipse cx="222" cy="34" rx="10" ry="15"/><ellipse cx="160" cy="27" rx="9" ry="13"/><ellipse cx="240" cy="27" rx="9" ry="13"/><ellipse cx="200" cy="27" rx="9" ry="13"/></g>
+            <g fill="#fff"><circle cx="200" cy="20" r="7"/><circle cx="178" cy="15" r="6"/><circle cx="222" cy="15" r="6"/></g>
+          </g>
+          <g fill="#f04e3e"><rect x="192" y="29" width="16" height="4" rx="2"/><rect x="171" y="23" width="14" height="4" rx="2"/><rect x="215" y="23" width="14" height="4" rx="2"/></g>
+          <g transform="translate(150 128) rotate(-20)"><circle r="30" fill="#f04e3e" stroke="#123120" stroke-width="4"/><circle cx="8" cy="-12" r="4" fill="#3a0a06"/><circle cx="17" cy="-4" r="4" fill="#3a0a06"/><circle cx="4" cy="4" r="5" fill="#3a0a06"/><path d="M-18 -10 A 22 22 0 0 1 -8 -20" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".7"/></g>
+          <path d="M190 108 L198 78 M182 104 L176 86" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 10"/>
+        </svg></div>
+        <div class="body">
+          <h2>Bowling</h2>
+          <p>A neon alley and ten pins. Swing your arm, let go, and twist your wrist to hook it into the pocket.</p>
+          <span class="play">Open on the TV</span>
+        </div>
       </a>
-      <a class="mode" href="golf/">
-        <div class="ico">⛳</div>
-        <h3>Swing Golf</h3>
-        <p>A 3D course with wind, water, bunkers and sloped greens. Pick a club, take it back, swing through; pull, push, draw and fade with your swing.</p>
-        <span class="go">Open big screen →</span>
+
+      <a class="pick" href="golf/">
+        <div class="art"><svg viewBox="0 0 400 168" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="168" fill="#2e9f4f"/>
+          <path d="M0 0 H70 L20 168 H0 Z M140 0 H210 L200 168 H120 Z M280 0 H350 L380 168 H300 Z" fill="#25893f"/>
+          <ellipse cx="282" cy="70" rx="92" ry="40" fill="#5cc46a" stroke="#123120" stroke-width="3"/>
+          <ellipse cx="300" cy="74" rx="8" ry="4" fill="#123120"/>
+          <path d="M300 74 V12" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+          <path d="M302 13 L340 24 L302 36 Z" fill="#f04e3e" stroke="#123120" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M70 150 C 120 40, 220 20, 288 66" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 11"/>
+          <circle cx="70" cy="146" r="13" fill="#fff" stroke="#123120" stroke-width="3"/>
+          <g fill="#c9ccc2"><circle cx="66" cy="142" r="2"/><circle cx="74" cy="142" r="2"/><circle cx="70" cy="149" r="2"/></g>
+          <path d="M36 168 L60 130" stroke="#123120" stroke-width="5" stroke-linecap="round"/>
+        </svg></div>
+        <div class="body">
+          <h2>Golf</h2>
+          <p>Nine holes with wind, water and bunkers. Pick a club, take it back and swing through; the way you swing draws or fades it.</p>
+          <span class="play">Open on the TV</span>
+        </div>
       </a>
-      <a class="mode" href="baseball/">
-        <div class="ico">⚾</div>
-        <h3>Home Run Derby</h3>
-        <p>A 3D ballpark under the lights. Swing your phone like a bat when the ring closes. Early pulls it, late goes the other way, and a fast swing clears the fence.</p>
-        <span class="go">Open big screen →</span>
+
+      <a class="pick" href="baseball/">
+        <div class="art"><svg viewBox="0 0 400 168" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="168" fill="#2e9f4f"/>
+          <path d="M-20 0 H420 V40 Q 200 -30 -20 40 Z" fill="#14381f"/>
+          <path d="M200 30 L330 120 L200 210 L70 120 Z" fill="#c8673f" stroke="#123120" stroke-width="3"/>
+          <path d="M200 64 L282 120 L200 176 L118 120 Z" fill="#2e9f4f"/>
+          <g fill="#fff" stroke="#123120" stroke-width="3"><rect x="191" y="21" width="18" height="18" transform="rotate(45 200 30)"/><rect x="321" y="111" width="18" height="18" transform="rotate(45 330 120)"/><rect x="61" y="111" width="18" height="18" transform="rotate(45 70 120)"/></g>
+          <circle cx="200" cy="120" r="12" fill="#c8673f"/>
+          <g transform="translate(300 52) rotate(-25)"><circle r="30" fill="#fff" stroke="#123120" stroke-width="4"/><path d="M-14 -26 Q -2 0 -14 26 M14 -26 Q 2 0 14 26" fill="none" stroke="#e0392b" stroke-width="3.5" stroke-dasharray="4 4"/></g>
+          <path d="M90 40 L250 14" stroke="#7a4a20" stroke-width="11" stroke-linecap="round"/>
+          <path d="M90 40 L130 33" stroke="#123120" stroke-width="11" stroke-linecap="round"/>
+        </svg></div>
+        <div class="body">
+          <h2>Home Run Derby</h2>
+          <p>Ten swings under the lights. Swing your phone like a bat as the ring closes; the faster you swing, the further it flies.</p>
+          <span class="play">Open on the TV</span>
+        </div>
       </a>
-      <a class="mode" href="tennis/">
-        <div class="ico">🎾</div>
-        <h3>Swing Tennis</h3>
-        <p>A stadium hard court. Play each other (the camera changes ends every game), or team up for doubles against a computer pair. Your player runs to the ball; you swing. Timing aims it, a gentle swing lobs.</p>
-        <span class="go">Open big screen →</span>
+
+      <a class="pick" href="tennis/">
+        <div class="art"><svg viewBox="0 0 400 168" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="168" fill="#3d9a5a"/>
+          <path d="M120 0 H280 L370 168 H30 Z" fill="#2c66cf"/>
+          <g fill="none" stroke="#fff" stroke-width="4"><path d="M120 0 L30 168 M280 0 L370 168 M140 0 L62 168 M260 0 L338 168 M200 60 V168 M100 60 H300"/></g>
+          <path d="M60 60 H340" stroke="#123120" stroke-width="5"/>
+          <g stroke="#123120" stroke-width="2" opacity=".55"><path d="M70 50 H330 M70 40 H330 M70 30 H330"/></g>
+          <path d="M60 22 H340" stroke="#fff" stroke-width="6"/>
+          <path d="M60 22 V62 M340 22 V62" stroke="#123120" stroke-width="5"/>
+          <g transform="translate(250 112)"><circle r="24" fill="#dff02f" stroke="#123120" stroke-width="4"/><path d="M-10 -21 Q 3 0 -10 21 M10 -21 Q -3 0 10 21" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/></g>
+          <path d="M140 150 C 170 120, 200 112, 222 112" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 10"/>
+        </svg></div>
+        <div class="body">
+          <h2>Tennis</h2>
+          <p>Play each other, or team up for doubles against the computer. Tilt your phone to toss, swing to serve, and time your shots to aim them.</p>
+          <span class="play">Open on the TV</span>
+        </div>
       </a>
     </div>
 
-    <div class="how">
+    <section class="steps">
       <h2>How to play</h2>
       <ol>
-        <li>Open a game on a laptop or a TV's web browser: that's the big screen.</li>
-        <li>Everyone scans the QR code with their phone camera (or opens the link and types the 4-letter code).</li>
-        <li>Tap <b>Connect</b>, then <b>Allow</b> when the phone asks for motion access.</li>
-        <li>Swing! Grip the phone firmly. The phone shows what it measured after every swing.</li>
+        <li><div><b>Open a game on the TV</b><span>Any laptop or smart TV web browser works. That screen becomes the stadium.</span></div></li>
+        <li><div><b>Scan the code</b><span>Everyone points their phone camera at the code on the TV, then allows motion.</span></div></li>
+        <li><div><b>Swing</b><span>Grip your phone firmly and swing it like the real thing.</span></div></li>
       </ol>
-      <p>Wi-Fi or cellular both work; the phone and the big screen don't need to be on the same network. No second screen? Try <a href="bowling/solo.html">bowling solo on one phone</a>. The host can remove a player from <b>Players / QR</b> on the big screen, and change to another game any time with <b>Switch game</b>: everyone's phone follows along.</p>
+    </section>
+
+    <div class="extras">
+      <p>No TV handy? <a href="bowling/solo.html">Bowl on just your phone</a>.</p>
+      <p>Phones and the TV don't need the same Wi-Fi, and you can switch games mid-match: every phone follows.</p>
     </div>
   </div>
-</div>
+</main>
+<script>
+  // one thrown ball on arrival (left where it lands if motion is turned down)
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const a = document.getElementById('arc'); a.setAttribute('dur', '0.001s'); a.setAttribute('begin', '0s');
+  }
+</script>
 </body>
 </html>

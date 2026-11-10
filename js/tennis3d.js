@@ -429,7 +429,7 @@ export class Tennis3D {
   // may still be on its way the ball eases up near that player's racket, and when the shot lands the ball
   // slides onto its true path (which started a moment ago) instead of jumping.
   _shownBall(game, t, dt) {
-    const slow = u => (u < 0.3 ? u * 0.35 : u < 0.5 ? 0.105 + (u - 0.3) * 1.975 : u);   // seconds past contact -> shown
+    const slow = u => (u < 0.18 ? u * 0.4 : u < 0.3 ? 0.072 + (u - 0.18) * 1.9 : u);   // seconds past contact -> shown (a brief ease, then it catches up)
     const X = game.expect, B = game.ball;
     let tb = t;
     if (game.toss) { const c = game.toss.t0 + game.toss.contactT; if (!game.isCpu(game.serverFig()) && t > c) tb = c + slow(t - c); }

@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#6b4423">
 <title>Swing Bowl · Solo</title>
+<link rel="preload" href="../fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../css/style.css">
 </head>
-<body class="solo">
+<body class="solo g-bowling">
 <div class="stage">
   <div id="view3d" style="position:absolute;inset:0"></div>
   <canvas id="c" hidden></canvas>
@@ -34,7 +35,7 @@
     <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
     <label><input type="checkbox" id="flip"> Flip spin direction (if hooks bend the wrong way)</label>
     <button class="btn" id="go">Start &amp; enable motion</button>
-    <p style="font-size:13px">Want a big screen and friends? Open the <b>Swing Bowl big screen</b> on a laptop or TV and join with each phone.</p>
+    <p class="help">Want a big screen and friends? Open the <b>Swing Bowl big screen</b> on a laptop or TV and join with each phone.</p>
   </div>
 </div>
 
@@ -104,12 +105,25 @@ import { Bowl3D } from '../js/bowl3d.js';
     SB.store.set('name', name === 'You' ? '' : name); SB.store.set('flip', $('flip').checked ? '1' : '0');
     SB.store.set('steer', $('steer').value); SB.store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
     pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
-    SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
+    if (SB.clearUndo($('sheet'), '?go=1')) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
+    await start(name);
+  };
+  async function start(name) {
     await pad.enable();
     SB.keepAwake();
     if (!app.info().players.length) { app.addPlayer(name); app.setHand(0, hand.lefty); }
     $('sheet').hidden = true;
-  };
+  }
+  // back from that fresh page: one tap (phones need it before sharing motion) and you're bowling
+  if (new URLSearchParams(location.search).get('go') === '1') {
+    history.replaceState(null, '', location.pathname);
+    $('sheet').hidden = true;
+    const ov = document.createElement('div');
+    ov.className = 'tapgo';
+    ov.innerHTML = '<button type="button"><span>▶</span><b>Bowling</b><small>Tap to start</small></button>';
+    document.body.appendChild(ov);
+    ov.querySelector('button').addEventListener('click', async () => { ov.remove(); sfx.unlock(); await start(SB.store.get('name', '') || 'You'); });
+  }
 }
 </script>
 </body>

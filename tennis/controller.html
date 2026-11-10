@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#2c66cf">
 <title>Swing Tennis · Controller</title>
+<link rel="preload" href="../fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
+<body class="g-tennis">
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
@@ -21,7 +22,8 @@
   <div class="readout" id="readout"></div>
   <div class="readout tally" id="tally"></div>
   <div class="holdwrap">
-    <button class="hold" id="hold" disabled><span class="lbl">SERVE</span><small>tap to toss, then swing</small></button>
+    <div class="tilt" id="tilt" hidden><div class="tphone"><i></i></div><b>Tilt your phone up to toss</b><small>then swing as the ball comes down</small></div>
+    <button class="hold" id="hold" disabled><span class="lbl">SERVE</span><small>tilt up (or tap) to toss, then swing</small></button>
   </div>
 </div>
 <div class="sheet" id="sheet">
@@ -32,7 +34,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to play: hold the phone like a racket handle. Two of you can play each other, or team up against the computer (switch at the top of the screen). Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tap <b>SERVE</b> (or just wait) and swing as the ball comes down.</p>
+    <p class="help">How to play: hold the phone like a racket handle. Two of you can play each other, or team up against the computer (switch at the top of the screen). Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tilt your phone up (like lifting your arm to toss the ball), then swing as the ball comes down. Tapping <b>SERVE</b> tosses it too.</p>
   </div>
 </div>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
@@ -68,11 +70,11 @@
   const hand = SB.handSwitch({ button: $('hand'), client });
   // No buttons while you swing: every fast swing is sent, stamped with the moment of peak racket
   // speed on the big screen's clock. The big screen works out whether it was your ball.
-  let tossTap = false;
+  let tossTap = false, tossedAt = -1e9;
   const pad = SB.makeSwingPad({
     mode: 'auto', button: $('hold'), meter: $('meter'), minPeak: 320, fullPeak: 950,
-    labels: { hold: 'SERVE', sub: 'tap to toss, then swing', tapHold: 'SWING', tapSub: 'tap and let go to swing' },
-    canSwing: () => !!(st && st.onCourt),
+    labels: { hold: 'SERVE', sub: 'tilt up (or tap) to toss, then swing', tapHold: 'SWING', tapSub: 'tap and let go to swing' },
+    canSwing: () => !!(st && st.onCourt) && performance.now() - tossedAt > 650,   // (the tilt that tossed it isn't a swing)
     onArm: () => {
       if (!st || !st.serving || st.state !== 'serve') return;   // only a serve needs a toss
       client.send({ t: 'arm', on: true });
@@ -87,11 +89,20 @@
       $('readout').innerHTML = speedText;
     },
     onBlocked: () => {
+      if (st && st.onCourt) return;   // (just after a tilt-up toss)
       if (!st) hint('Not connected to the big screen yet.');
       else hint('You’re not on court yet: you’ll play the winner of this match.');
     },
     onHint: hint,
   });
+  // tilt the phone up (like lifting your arm to toss the ball) to start your serve
+  const tilt = SB.tiltUp({ onTilt: () => {
+    if (!st || !st.serving || st.state !== 'serve' || pad.tapMode) return;
+    tossedAt = performance.now();
+    client.send({ t: 'arm', on: true });
+    setState('Here’s the toss… swing as it comes down!', true);
+    if (navigator.vibrate) navigator.vibrate(25);
+  } });
   function onKicked() {
     if (kicked) return;
     kicked = true; st = null;
@@ -124,6 +135,8 @@
       $('tally').innerHTML = st.onCourt ? `${mate}Games <b>${st.games[st.end]}–${st.games[1 - st.end]}</b> · Points <b>${st.points[st.end]}–${st.points[1 - st.end]}</b> · Wins <b>${me.wins}</b>${cam}` : `Wins <b>${me.wins}</b>`;
     }
     const tap = pad.tapMode;   // no motion sensor: the button is the swing
+    const tiltNow = !!(st.onCourt && st.serving && st.state === 'serve' && !tap && !st.over);
+    tilt.on = tiltNow; $('tilt').hidden = !tiltNow;
     $('hold').disabled = tap ? !st.onCourt || st.over : !st.serving || st.state !== 'serve';
     if (st.note && (!lastNote || st.note.at !== lastNote.at)) {
       lastNote = st.note;
@@ -133,7 +146,7 @@
     if (Date.now() < hintUntil) return;
     if (!st.onCourt) setState(st.state === 'idle' ? 'Waiting for a match…' : st.mode === 'team' ? 'You’re next: you’ll swap in after this match.' : 'You’re next: you’ll play the winner of this match.');
     else if (st.over) setState('Match over! A new one starts in a moment.');
-    else if (st.serving) setState(st.state === 'toss' ? (tap ? 'Tap as the ball comes down!' : 'Swing as the ball comes down!') : tap ? 'Your serve! Tap to toss, then tap as it comes down.' : 'Your serve! Tap SERVE (or wait), then swing.', true);
+    else if (st.serving) setState(st.state === 'toss' ? (tap ? 'Tap as the ball comes down!' : 'Swing as the ball comes down!') : tap ? 'Your serve! Tap to toss, then tap as it comes down.' : 'Your serve! Tilt your phone up to toss.', true);
     else if (st.hitting) setState(tap ? 'Here it comes… tap when the ring closes!' : 'Here it comes… swing when the ring closes!', true);
     else if (st.partnerHitting) setState(`${st.partner}’s ball. Get ready…`);
     else if (st.state === 'serve' || st.state === 'toss') setState('Get ready to return the serve…');
@@ -146,7 +159,7 @@
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
     store.set('tennis-room', room); store.set('name', name);
-    SB.clearUndo($('sheet'));
+    if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
       kicked = false; $('sheetStatus').textContent = '';

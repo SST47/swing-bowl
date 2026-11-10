@@ -160,14 +160,22 @@
    * belongs to those input elements, so swap each typed-in field for a fresh
    * copy (same value) and drop focus; with nothing to undo, iOS shows nothing.
    */
-  function clearUndo(container) {
+  // iPhones offer "Undo Typing" when shaken after typing, and swinging a phone is a big shake. The
+  // typing history belongs to the page, so once someone has typed (a name, a room code) the page
+  // reloads itself fresh, with no history, at `url` (which rejoins straight away). Returns true if
+  // it's leaving. Nothing typed: just drops the keyboard.
+  let typed = false;
+  if (root.document) document.addEventListener('input', e => {
+    const el = e.target;
+    if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) typed = true;
+  }, true);
+  function clearUndo(container, url) {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    (container || document).querySelectorAll('input[type=text], input:not([type]), textarea').forEach(el => {
-      const fresh = el.cloneNode(true);
-      fresh.value = el.value;
-      el.replaceWith(fresh);
-    });
+    if (!typed || !url) return false;
+    location.replace(url);
+    return true;
   }
+
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem('sb-' + k); return v === null ? d : v; } catch (e) { return d; } },
@@ -228,5 +236,32 @@
     };
   }
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch });
+  /*
+   * Tilt up: raising the phone's top end (the way you'd lift your arm to toss a ball) fires onTilt once.
+   * Set .on while it should listen. It fires when the top end rises at least 35° within 0.7 s and ends
+   * up at least 50° above flat. Uses the phone's orientation, or gravity when there's no orientation.
+   */
+  function tiltUp({ onTilt }) {
+    let on = false, hist = [], last = 0, orientAt = 0;
+    const D = Math.PI / 180;
+    const feed = (t, el) => {
+      if (!on) return;
+      hist.push({ t, el }); while (hist.length && hist[0].t < t - 700) hist.shift();
+      let lo = el; for (const h of hist) lo = Math.min(lo, h.el);
+      if (el >= 50 && el - lo >= 35 && t - last > 1500) { last = t; hist = []; onTilt(); }
+    };
+    root.addEventListener('deviceorientation', e => {
+      if (e.beta === null || e.beta === undefined) return;
+      orientAt = performance.now();
+      feed(orientAt, Math.asin(Math.sin(e.beta * D)) / D);   // how far the top end points above flat
+    });
+    root.addEventListener('devicemotion', e => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.y === null || performance.now() - orientAt < 1000) return;   // (orientation is better when there is one)
+      feed(performance.now(), Math.asin(Math.max(-1, Math.min(1, g.y / 9.81))) / D);
+    });
+    return { get on() { return on; }, set on(v) { if (!!v !== on) hist = []; on = !!v; } };
+  }
+
+  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch, tiltUp });
 })(self);

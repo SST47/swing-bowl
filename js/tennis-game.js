@@ -445,7 +445,7 @@
       if (this.state === 'serve') {
         this.timer -= dt; this.idle += dt;
         const si = this.serverFig();
-        if (this.timer <= 0 && (this.armed || this.idle > (this.isCpu(si) ? 1.4 : 2.4))) {
+        if (this.timer <= 0 && (this.armed || this.idle > (this.isCpu(si) ? 1.4 : 5))) {   // people tilt their phone up (or tap) to toss
           // toss it up
           const S = this.figs[si], right = S.side === -1 ? 1 : -1, racket = this.isLefty(si) ? -1 : 1;
           const hand = { x: S.pos.x + 0.28 * right * racket, y: T.TOSS.from, z: S.pos.z - S.side * 0.25 };   // up in front of the racket shoulder
@@ -521,7 +521,7 @@
       this.el.info.innerHTML = ls ? `${ls.kind === 'serve' ? 'Serve' : 'Shot'}<br><b>${ls.kmh} km/h</b>` : 'Tennis';
       let turn = '';
       const si = this.figs.length ? this.serverFig() : null;
-      if (this.state === 'serve' || this.state === 'toss') turn = this.isCpu(si) ? 'CPU to serve' : `${esc(this.figWho(si).name)} to serve · swing as the ball comes down`;
+      if (this.state === 'serve' || this.state === 'toss') turn = this.isCpu(si) ? 'CPU to serve' : this.state === 'serve' ? `${esc(this.figWho(si).name)} to serve · tilt your phone up to toss` : `${esc(this.figWho(si).name)}: swing as the ball comes down`;
       else if (this.state === 'rally' && this.expect && !this.isCpu(this.expect.fig)) turn = `${esc(this.figWho(this.expect.fig).name)}: swing when the ring closes`;
       else if (this.state === 'idle') turn = 'Join on your phone to play';
       this.el.turn.innerHTML = turn;

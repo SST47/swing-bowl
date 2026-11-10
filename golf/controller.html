@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#2e9f4f">
 <title>Swing Golf · Controller</title>
+<link rel="preload" href="../fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
+<body class="g-golf">
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
@@ -39,7 +40,7 @@
     <label><input type="checkbox" id="flipCurve"> Flip curve (if shots bend the wrong way)</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to play: grip the phone like a club. Press and <b>hold</b> the big button, take your backswing, and swing through. The hit happens by itself at the fastest point. Swing harder to hit farther. Pull or push your swing to send the ball left or right, and roll your wrist through impact to curve it. For putts, use a short, gentle stroke.</p>
+    <p class="help">How to play: grip the phone like a club. Press and <b>hold</b> the big button, take your backswing, and swing through. The hit happens by itself at the fastest point. Swing harder to hit farther. Pull or push your swing to send the ball left or right, and roll your wrist through impact to curve it. For putts, use a short, gentle stroke.</p>
   </div>
 </div>
 
@@ -156,7 +157,7 @@
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
     store.set('golf-room', room); store.set('name', name);
     store.set('golf-steer', $('steer').value); store.set('golf-flipSteer', $('flipSteer').checked ? '1' : '0'); store.set('golf-flipCurve', $('flipCurve').checked ? '1' : '0');
-    SB.clearUndo($('sheet'));
+    if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
       kicked = false; $('sheetStatus').textContent = '';

@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#a9472a">
 <title>Swing Baseball · Controller</title>
+<link rel="preload" href="../fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
+<body class="g-baseball">
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
@@ -32,7 +33,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to bat: grip the phone like a bat handle, tight. Tap <b>READY</b> when it's your turn, then watch the big screen and just <b>swing</b>. No buttons while you swing. Swing when the ring around the ball closes. Early pulls it, late goes the other way, and a fast swing goes far.</p>
+    <p class="help">How to bat: grip the phone like a bat handle, tight. Tap <b>READY</b> when it's your turn, then watch the big screen and just <b>swing</b>. No buttons while you swing. Swing when the ring around the ball closes. Early pulls it, late goes the other way, and a fast swing goes far.</p>
   </div>
 </div>
 
@@ -139,7 +140,7 @@
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
     store.set('ball-room', room); store.set('name', name);
-    SB.clearUndo($('sheet'));
+    if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
       kicked = false; $('sheetStatus').textContent = '';

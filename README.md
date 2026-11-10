@@ -9,7 +9,7 @@ Wii-style motion sports in the browser. A laptop or TV shows the game, and every
 | 🎳 **Swing Bowl** | [`bowling/`](bowling/) | A 3D bowling alley. Hold the button, swing, let go. Swing speed sets ball speed, the swing path sets the direction, a wrist twist adds hook. |
 | ⛳ **Swing Golf** | [`golf/`](golf/) | A 3D course (three.js). Pick a club, take it back, swing through: speed sets distance, path pushes or pulls the ball, wrist roll draws or fades it. Putts use a soft stroke. |
 | ⚾ **Home Run Derby** | [`baseball/`](baseball/) | A 3D ballpark. No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. After every pitch the phone says what happened (hit, foul or miss, and how early or late). |
-| 🎾 **Swing Tennis** | [`tennis/`](tennis/) | A 3D stadium court. Play each other (one on their own plays the computer; the winner stays on when others are waiting), or team up for doubles against a computer pair. Switch between the two from any phone or the big screen (**T**). Head to head, the camera changes ends every game so each player gets the view from behind themselves (**V** moves it any time). Your player runs to the ball and you swing: timing aims it (early pulls cross-court, late pushes it the other way), swing speed sets pace, a gentle swing lobs. First to 2 games. |
+| 🎾 **Swing Tennis** | [`tennis/`](tennis/) | A 3D stadium court. Play each other (one on their own plays the computer; the winner stays on when others are waiting), or team up for doubles against a computer pair. Switch between the two from any phone or the big screen (**T**). Head to head, the camera changes ends every game so each player gets the view from behind themselves (**V** moves it any time). To serve, tilt your phone up to toss the ball, then swing. Your player runs to the ball and you swing: timing aims it (early pulls cross-court, late pushes it the other way), swing speed sets pace, a gentle swing lobs. First to 2 games. |
 
 Up to 6 players per game. **Switch game** (on the big screen, or press **G**) moves everyone to another game mid-match: the room code and players stay the same, and every phone follows along with one tap. The big screen can also be played with the keyboard for testing, and bowling has a [one-phone solo mode](bowling/solo.html).
 
@@ -75,3 +75,5 @@ node tests/golf.test.js       # club distances, curve, wind, putting, hazards
 node tests/baseball.test.js   # flight distances and the contact model
 node tests/tennis.test.js     # shot solving, hit points, in-court rates by timing, serves, scoring
 ```
+
+The look is "sports day": mowed turf, chalk lines and chunky buttons, with each game's own surface on the phones. The type is [Fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) by Milena Brandão, bundled in `fonts/` under the SIL Open Font License (`fonts/Fredoka-OFL.txt`).

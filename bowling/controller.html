@@ -6,11 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#6b4423">
 <title>Swing Bowl · Controller</title>
+<link rel="preload" href="../fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
+<body class="g-bowling">
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
@@ -38,7 +39,7 @@
     <label><input type="checkbox" id="flip"> Flip spin direction (if hooks bend the wrong way)</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. The ball goes where you swing: straight through for straight, pull left or right to send it that way. Twist your wrist at release for a hook.</p>
+    <p class="help">How to bowl: hold the phone firmly (use the wrist strap if you have one). Press and hold the big button, swing your arm like a real bowl, and let go of the button as your arm comes forward. The ball goes where you swing: straight through for straight, pull left or right to send it that way. Twist your wrist at release for a hook.</p>
   </div>
 </div>
 
@@ -154,7 +155,7 @@
     store.set('room', room); store.set('name', name); store.set('flip', $('flip').checked ? '1' : '0');
     store.set('steer', $('steer').value); store.set('flipSteer', $('flipSteer').checked ? '1' : '0');
     pad.det.flipSpin = $('flip').checked; pad.det.steerLevel = $('steer').value; pad.det.flipSteer = $('flipSteer').checked;
-    SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
+    if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
       kicked = false; $('sheetStatus').textContent = '';
