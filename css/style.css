@@ -237,3 +237,11 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 
 /* keep the centre hint clear of the corner bar on narrow screens */
 @media (max-width: 1280px) { .hud .turn { bottom: 64px; } }
+
+/* tennis: play each other / team up */
+.pad .readout.tally { display: block; text-align: center; line-height: 1.6; }
+.pad .moderow { display: flex; gap: 8px; margin: 2px 0 6px; }
+.pad .moderow button { flex: 1; padding: 9px 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: inherit; font: 600 13px/1.2 system-ui, sans-serif; }
+.pad .moderow button.on { background: var(--cyan); border-color: var(--cyan); color: #06222a; }
+.lobby .tmodes { gap: 8px; margin: 8px 0 4px; }
+.lobby .tmodes .btn { padding: 8px 14px; font-size: 14px; }

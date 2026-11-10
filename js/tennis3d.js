@@ -1,7 +1,7 @@
 /*
- * Swing Tennis — 3D stadium court (three.js): a hard court under the sun, two players with rackets
- * (forehands, two-handed backhands, serves, running, celebrating), a crowd, an umpire in the chair,
- * a scoreboard, a broadcast camera.
+ * Swing Tennis — 3D stadium court (three.js): a hard court under the sun, two or four players with
+ * rackets (forehands, two-handed backhands, serves, running, celebrating), a crowd, an umpire in the
+ * chair, scoreboards, and a broadcast camera that swings round to whichever end it's told to sit behind.
  *
  * Engine coordinates (see tennis-engine.js): x across, y up, z along the court, near end at -z.
  * three.js: X = x, Y = y, Z = -z, so the camera sits behind the near baseline at +Z.
@@ -242,6 +242,7 @@ export class Tennis3D {
     tier(-13.4, 0, 38, Math.PI / 2 + Math.PI, 14);   // left side, rising to -x
     tier(13.4, 0, 38, Math.PI / 2, 14);              // right side
     tier(0, -20.4, 26, Math.PI, 12);                 // behind the far baseline
+    tier(0, 20.4, 26, 0, 12);                        // behind the near baseline (seen when the camera changes ends)
     const crowdGeo = new THREE.CapsuleGeometry(0.2, 0.36, 2, 6).translate(0, 0.38, 0);
     const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
     crowdMat.onBeforeCompile = sh => {
@@ -266,30 +267,34 @@ export class Tennis3D {
     applyPose(ump, { hips: [0, 0, 0], legL: [[0.1, 0, 1], [0, -1, 0.1]], legR: [[-0.1, 0, 1], [0, -1, 0.1]], armL: [[0.2, -0.8, 0.5], [0, -0.2, 1]], armR: [[-0.2, -0.8, 0.5], [0, -0.2, 1]], spine: [-0.05, 0, 0], lift: -0.06 });
     ump.root.position.set(-7.25, 1.94 - 0.55, 0); ump.root.rotation.y = Math.PI / 2; ump.root.scale.setScalar(0.95); S.add(ump.root);
     this.umpire = ump;
-    // scoreboard over the far stand
+    // a scoreboard over each end stand
     this.sbCanvas = document.createElement('canvas'); this.sbCanvas.width = 1024; this.sbCanvas.height = 300;
     this.sbTex = new THREE.CanvasTexture(this.sbCanvas); this.sbTex.colorSpace = THREE.SRGBColorSpace;
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(10.24, 3.0), new THREE.MeshBasicMaterial({ map: this.sbTex, toneMapped: false }));
-    board.position.set(0, 10.4, -27.3); S.add(board);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(10.8, 3.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x0d1626, roughness: 0.7 }));
-    frame.position.set(0, 10.4, -27.55); S.add(frame);
-    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5), frame.material); pole.position.set(0, 4.5, -27.6); S.add(pole);
+    const frameM = new THREE.MeshStandardMaterial({ color: 0x0d1626, roughness: 0.7 });
+    for (const sz of [-1, 1]) {
+      const g = new THREE.Group(); g.rotation.y = sz < 0 ? 0 : Math.PI; S.add(g);
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(10.24, 3.0), new THREE.MeshBasicMaterial({ map: this.sbTex, toneMapped: false }));
+      board.position.set(0, 10.4, -27.3); g.add(board);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(10.8, 3.5, 0.4), frameM); frame.position.set(0, 10.4, -27.55); g.add(frame);
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5), frameM); pole.position.set(0, 4.5, -27.6); g.add(pole);
+    }
     this.sbKey = '';
   }
 
   _people() {
-    this.players = [null, null];
-    this.playerKey = ['', ''];
+    this.players = [];      // one per figure on court (two in singles, four in doubles)
+    this.playerKey = [];
   }
-  _player(end, color) {
-    const S = this.scene, old = this.players[end];
-    if (old) { S.remove(old.f.root); S.remove(old.racket); }
+  _dropPlayer(i) { const old = this.players[i]; if (old) { this.scene.remove(old.f.root); this.scene.remove(old.racket); } this.players[i] = null; }
+  _player(i, color, end) {
+    this._dropPlayer(i);
+    const S = this.scene;
     const f = makeFigure({ shirt: new THREE.Color(color).getHex(), pants: 0xf2f2f2, shoes: 0xf2f2f2, socks: 0xf2f2f2, hatType: 'cap', hat: new THREE.Color(color).getHex(), longSleeves: false });
     f.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     f.root.rotation.y = end === 0 ? Math.PI : 0;
     S.add(f.root);
     const racket = makeRacket(new THREE.Color(color).lerp(new THREE.Color(0x111111), 0.35).getHex()); S.add(racket);
-    this.players[end] = { f, racket, phase: 0 };
+    this.players[i] = { f, racket, phase: 0 };
   }
 
   _dynamic() {
@@ -328,8 +333,9 @@ export class Tennis3D {
     info.forEach((r, i) => {
       const y = 120 + i * 105;
       g.fillStyle = r.w.color; g.fillRect(36, y - 34, 14, 68);
-      g.fillStyle = '#ffffff'; g.font = '800 58px system-ui, sans-serif'; g.textAlign = 'left';
-      g.fillText(r.w.name.toUpperCase().slice(0, 12), 70, y);
+      const nm = r.w.name.toUpperCase().slice(0, 22);
+      g.fillStyle = '#ffffff'; g.font = `800 ${nm.length > 12 ? Math.max(34, Math.round(58 * 12 / nm.length)) : 58}px system-ui, sans-serif`; g.textAlign = 'left';
+      g.fillText(nm, 70, y, 520);
       if (r.srv) { g.fillStyle = '#d8ef3c'; g.beginPath(); g.arc(620, y, 14, 0, Math.PI * 2); g.fill(); }
       g.textAlign = 'right'; g.fillStyle = '#ffd23f'; g.fillText(String(r.g), 780, y); g.fillStyle = '#ffffff'; g.fillText(r.p, 980, y);
     });
@@ -340,34 +346,44 @@ export class Tennis3D {
     this.uTime.value = t;
     const S = this.scene;
     // players (rebuilt when who's playing changes)
-    for (const end of [0, 1]) {
-      const w = game.who(end), key = w.name + w.color;
-      if (key !== this.playerKey[end] || !this.players[end]) { this.playerKey[end] = key; this._player(end, w.color); }
-      this._animate(game, end, dt, t);
+    const figs = game.figs;
+    for (let i = 0; i < figs.length; i++) {
+      const F = figs[i], w = game.figWho(i);
+      const color = F.idx === null && F.slot === 1 ? '#a7b2c8' : w.color;   // the computer pair: two shades of grey
+      const key = `${figs.length}|${F.end}|${w.name}|${color}`;
+      if (key !== this.playerKey[i] || !this.players[i]) { this.playerKey[i] = key; this._player(i, color, F.end); }
+      this._animate(game, i, dt, t);
     }
+    for (let i = figs.length; i < this.players.length; i++) { this._dropPlayer(i); this.playerKey[i] = ''; }
     this._ballAndEffects(game, dt, t);
     this._scoreboard(game);
     // the crowd: a ripple after points, a roar for games and the match
     const lp = game.lastPoint, since = lp ? t - lp.at : 99;
     const cheer = since < 2.5 ? (lp.res === 'point' ? 0.35 : 1) * (1 - since / 2.5) : 0;
     this.uCheer.value += (cheer - this.uCheer.value) * Math.min(1, dt * 4);
-    if (lp && lp.res === 'match' && lp !== this.lastMatchSeen) { this.lastMatchSeen = lp; const P = game.ends[lp.end].pos; this.confetti.burst(V(P.x, 2.2, P.z), 260, 4.5, 2); }
+    if (lp && lp.res === 'match' && lp !== this.lastMatchSeen) { this.lastMatchSeen = lp; const P = this._endMid(game, lp.end); this.confetti.burst(V(P.x, 2.2, P.z), 260, 4.5, 2); }
     this.confetti.update(dt);
     this._camera(game, dt, t);
     this._autoRes();
     this.renderer.render(S, this.camera);
   }
 
+  // the middle of the players at one end
+  _endMid(game, end) {
+    const fs = game.figs.filter(F => F.end === end);
+    return fs.length ? { x: fs.reduce((a, F) => a + F.pos.x, 0) / fs.length, z: fs.reduce((a, F) => a + F.pos.z, 0) / fs.length } : { x: 0, z: 0 };
+  }
+
   _animate(game, end, dt, t) {
-    const P = this.players[end], E = game.ends[end], f = P.f;
+    const P = this.players[end], E = game.figs[end], f = P.f;
     const facing = E.side === -1 ? Math.PI : 0;      // the near player looks down -Z at the net, the far one up +Z
     f.root.position.copy(V(E.pos.x, 0, E.pos.z));
     const speed = Math.hypot(E.vel.x, E.vel.z);
     P.phase += dt * (4 + speed * 2.2);
     let pose = mixPose(READY, runPose(P.phase), smooth(0.4, 3, speed));
-    const X = game.expect, serving = (game.state === 'serve' || game.state === 'toss') && game.server === end;
+    const X = game.expect, serving = (game.state === 'serve' || game.state === 'toss') && game.serverFig() === end;
     // getting ready for the ball: take the racket back as it comes
-    if (X && X.end === end && !X.done) pose = mixPose(pose, X.forehand ? FH_BACK : BH_BACK, smooth(X.T - 0.75, X.T - 0.22, t));
+    if (X && X.fig === end && !X.done) pose = mixPose(pose, X.forehand ? FH_BACK : BH_BACK, smooth(X.T - 0.75, X.T - 0.22, t));
     if (serving) {
       if (game.state === 'serve') pose = S_STANCE;
       else { const st = t - E.tossAt, ct = game.toss ? game.toss.contactT : 1; pose = samplePose([{ t: 0, pose: S_STANCE }, { t: 0.3, pose: S_TOSS }, { t: Math.max(0.5, ct - 0.2), pose: S_TROPHY }], st); }
@@ -405,8 +421,8 @@ export class Tennis3D {
   _ballAndEffects(game, dt, t) {
     let b = game.ballNow(t);
     // before the toss, the server holds the ball
-    if (!b && (game.state === 'serve') && this.players[game.server]) {
-      const h = this.players[game.server].f.arms.L.hand.getWorldPosition(new THREE.Vector3());
+    if (!b && (game.state === 'serve') && this.players[game.serverFig()]) {
+      const h = this.players[game.serverFig()].f.arms.L.hand.getWorldPosition(new THREE.Vector3());
       b = { x: h.x, y: h.y - 0.02, z: -h.z };
     }
     this.ball.visible = !!b;
@@ -447,25 +463,25 @@ export class Tennis3D {
     // timing ring: closes on the ball at the moment to hit it (only for a person, not the computer)
     const X = game.expect;
     let ringOn = false;
-    if (b && X && !X.done && !game.isCpu(X.end) && game.state === 'rally') {
+    if (b && X && !X.done && !game.isCpu(X.fig) && game.state === 'rally') {
       const left = X.T - t;
       if (left < 0.75 && left > -0.12) {
         ringOn = true;
         const k = Math.max(0, left) / 0.75;
         this.ring.position.copy(this.ball.position);
         this.ring.scale.setScalar(T.BALL_R * sc * 2.6 * (1 + 4 * k));
-        this.ring.material.color.set(game.who(X.end).color).lerp(new THREE.Color(0x7dff9a), left < 0.1 ? 1 : 0);
+        this.ring.material.color.set(game.figWho(X.fig).color).lerp(new THREE.Color(0x7dff9a), left < 0.1 ? 1 : 0);
         this.ring.material.opacity = 0.95;
       }
     }
-    if (!ringOn && b && game.state === 'toss' && !game.isCpu(game.server) && game.toss) {
+    if (!ringOn && b && game.state === 'toss' && !game.isCpu(game.serverFig()) && game.toss) {
       const left = game.toss.t0 + game.toss.contactT - t;
       if (left < 0.9 && left > -0.12) {
         ringOn = true;
         const k = Math.max(0, left) / 0.9;
         this.ring.position.copy(this.ball.position);
         this.ring.scale.setScalar(T.BALL_R * sc * 2.6 * (1 + 4 * k));
-        this.ring.material.color.set(game.who(game.server).color).lerp(new THREE.Color(0x7dff9a), left < 0.1 ? 1 : 0);
+        this.ring.material.color.set(game.figWho(game.serverFig()).color).lerp(new THREE.Color(0x7dff9a), left < 0.1 ? 1 : 0);
       }
     }
     this.ring.visible = ringOn;
@@ -474,14 +490,20 @@ export class Tennis3D {
   _camera(game, dt, t) {
     const pos = new THREE.Vector3(), look = new THREE.Vector3();
     const b = game.ballNow(t);
-    // broadcast view from high behind the near baseline, drifting a little with the ball
+    // broadcast view from high behind one baseline, drifting a little with the ball. When the camera changes
+    // ends it swings round the side of the court (angle 0: behind the near end, π: behind the far end).
+    const want = game.camEnd === 1 ? Math.PI : 0;
+    if (this.camAng === undefined || this.snapNext) this.camAng = want;
+    this.camAng += (want - this.camAng) * (1 - Math.exp(-dt * 1.5));
+    if (Math.abs(want - this.camAng) < 1e-3) this.camAng = want;
+    const a = this.camAng, ca = Math.cos(a), sa = Math.sin(a);
     const bx = b ? Math.max(-5, Math.min(5, b.x)) : 0;
-    pos.set(bx * 0.18, 6.6, 26); look.set(bx * 0.3, 0.2, -2.5);
-    let rate = 2.2;
+    pos.set(sa * 28 + bx * 0.18 * ca, 6.6 + 10 * sa, ca * 26); look.set(bx * 0.3, 0.2, -2.5 * ca);   // up and over the side stand
+    let rate = sa > 0.05 ? 6 : 2.2;   // follow the swing closely
     // match won: swing in on the winner
     const lp = game.lastPoint;
     if (game.over && lp && lp.res === 'match' && game.state === 'point') {
-      const P = game.ends[lp.end].pos, s = game.ends[lp.end].side;
+      const P = this._endMid(game, lp.end), s = lp.end === 0 ? -1 : 1;
       pos.copy(V(P.x + 2.5, 2.4, P.z - s * 5.5)); look.copy(V(P.x, 1.3, P.z)); rate = 1.3;
     }
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * rate);

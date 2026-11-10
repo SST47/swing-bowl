@@ -25,7 +25,8 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const netHeight = x => COURT.NET_H + (COURT.POST_H - COURT.NET_H) * Math.min(1, Math.abs(x) / COURT.POST_X);
   const sideOf = z => (z < 0 ? -1 : 1);
-  const inCourt = (x, z, side) => Math.abs(x) <= COURT.W + 0.03 && side * z >= 0 && side * z <= COURT.L + 0.03;
+  // in on `side`'s half; doubles rallies use the tramlines too (serves always use the service boxes)
+  const inCourt = (x, z, side, doubles) => Math.abs(x) <= (doubles ? COURT.DW : COURT.W) + 0.03 && side * z >= 0 && side * z <= COURT.L + 0.03;
   // the service box diagonally across from a server on `side` standing on the deuce (or ad) half
   function serviceBox(side, deuce) {
     const s = -side;                          // the receiving end
@@ -112,11 +113,11 @@
   // Where the hitter on `side` should meet this ball: after it bounces once on their side, as it
   // comes down through a comfortable height (or at the top of a low bounce). null if it never gets
   // there in play (net, out, gone).
-  function hitPoint(flight, side) {
+  function hitPoint(flight, side, doubles) {
     const { pts, events } = flight;
     // into the net, or out: the point is over at the first bounce, nothing to hit
     const first = events.find(e => e.type === 'bounce');
-    if (!first || first.side !== side || !inCourt(first.x, first.z, side)) return null;
+    if (!first || first.side !== side || !inCourt(first.x, first.z, side, doubles)) return null;
     const second = events.find(e => e.type === 'bounce' && e.i > first.i);
     const end = second ? second.i : pts.length - 1;
     let apex = first.i;

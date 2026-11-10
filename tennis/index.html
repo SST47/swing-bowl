@@ -11,14 +11,15 @@
   <div id="view3d" style="position:absolute;inset:0"></div>
   <div class="vignette"></div>
   <div id="hud"></div>
-  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="mute">🔊</button></div>
+  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="modeBtn" title="Switch how you play (T)">🤝 Team up vs CPU</button> <button id="mute">🔊</button></div>
 
   <div class="overlay" id="lobby">
     <div class="card lobby">
       <div class="qr" id="qr">Loading QR…</div>
       <div>
         <h1>🎾 <span>Swing Tennis</span></h1>
-        <p>Scan with your phone camera to use it as your racket. Two players face off; on your own you play the computer. First to 2 games wins.</p>
+        <p>Scan with your phone camera to use it as your racket. Two of you can play each other, or team up against the computer (doubles). On your own you play the computer. First to 2 games wins.</p>
+        <div class="row tmodes"><button class="btn ghost" data-mode="h2h">🆚 Play each other</button><button class="btn ghost" data-mode="team">🤝 Team up vs CPU</button></div>
         <div class="code" id="code">····</div>
         <div class="joinurl" id="joinurl"></div>
         <div class="status" id="status">Opening room…</div>
@@ -27,7 +28,7 @@
           <button class="btn" id="start">Start game</button>
           <button class="btn ghost" id="newgame" hidden>New game</button>
         </div>
-        <div class="keys">No phone handy? <kbd>Space</kbd> swings for the near player, <kbd>Enter</kbd> for the far one, when the ring closes on the ball · <kbd>N</kbd> new match</div>
+        <div class="keys">No phone handy? <kbd>Space</kbd> swings for player 1, <kbd>Enter</kbd> for player 2, when the ring closes on the ball · <kbd>T</kbd> play each other / team up · <kbd>V</kbd> camera to the other end · <kbd>N</kbd> new match</div>
         <p style="font-size:13px"><a href="../">← All games</a></p>
       </div>
     </div>
@@ -56,18 +57,32 @@ import { Tennis3D } from '../js/tennis3d.js';
   let view = null;
   try { view = new Tennis3D($('view3d')); }
   catch (e) { console.error(e); $('view3d').innerHTML = '<div class="card" style="margin:20vh auto;text-align:center">This browser can’t show the 3D court (WebGL is off or unsupported). Try Chrome, Edge, Safari or Firefox.</div>'; }
+  // how you play: each other, or as a team against the computer (also from any phone)
+  const showMode = () => {
+    const team = game.mode === 'team';
+    $('modeBtn').textContent = team ? '🆚 Play each other' : '🤝 Team up vs CPU';
+    document.querySelectorAll('.tmodes [data-mode]').forEach(b => { b.classList.toggle('on', b.dataset.mode === game.mode); b.classList.toggle('ghost', b.dataset.mode !== game.mode); });
+  };
   const game = new TENNIS.TennisGame({ hud: $('hud'), sfx, view, onUpdate: info => {
     if (room) { room.push(); room.renderLobby(); }
+    showMode();
   } });
+  showMode();
+  $('modeBtn').onclick = () => { game.toggleMode(); showMode(); };
+  document.querySelectorAll('.tmodes [data-mode]').forEach(b => { b.onclick = () => { game.setMode(b.dataset.mode); showMode(); }; });
   room = new SB.Room({
     gameId: 'tennis', namespace: 'swingtennis/v1/', storageKey: 'st-room', game,
     stateFor: (idx, info) => {
-      const end = idx === null ? -1 : info.court.indexOf(idx);
-      const note = end >= 0 ? game.note[end] : null;
+      const fi = game.figOf(idx), F = fi >= 0 ? game.figs[fi] : null, end = F ? F.end : -1;
+      const mate = F && info.doubles ? game.figs.findIndex((G, k) => k !== fi && G.end === end) : -1;
       return {
-        game: 'tennis', state: info.state, onCourt: end >= 0, end, yourTurn: end >= 0 && !info.over,
-        serving: end >= 0 && info.server === end && (info.state === 'serve' || info.state === 'toss'),
-        hitting: end >= 0 && info.hitting === end, games: info.games, points: info.points, court: info.court, note,
+        game: 'tennis', state: info.state, onCourt: fi >= 0, end, yourTurn: fi >= 0 && !info.over,
+        serving: fi >= 0 && info.serverFig === fi && (info.state === 'serve' || info.state === 'toss'),
+        hitting: fi >= 0 && info.hittingFig === fi, partnerHitting: mate >= 0 && info.hittingFig === mate,
+        partner: mate >= 0 ? game.figWho(mate).name : null, mode: info.mode,
+        games: info.games, points: info.points, note: fi >= 0 ? game.note[fi] : null,
+        // head to head, the camera takes turns sitting behind each player
+        view: fi >= 0 && game._bothHuman() ? (info.camEnd === end ? 'you' : 'them') : null,
       };
     },
   });
@@ -75,20 +90,22 @@ import { Tennis3D } from '../js/tennis3d.js';
   window.__room = room;   // handy for debugging from the console
   window.__game = game;   // handy for debugging from the console
 
-  // keyboard play: Space swings for the near player, Enter for the far one
+  // keyboard play: Space swings for player 1, Enter for player 2 (T: each other / team up, V: camera to the other end)
   const ensure = () => { if (!game.info().players.length) game.addPlayer('Player 1'); };
   addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'Enter') e.preventDefault();
     if (e.repeat) return;
     if (e.code === 'KeyN') { room.newGame(); room.hide(); return; }
     if (e.code === 'KeyM') { $('mute').click(); return; }
+    if (e.code === 'KeyT') { game.toggleMode(); showMode(); return; }
+    if (e.code === 'KeyV') { game.toggleView(); return; }
     if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
     ensure();
-    const end = e.code === 'Space' ? 0 : e.code === 'Enter' ? 1 : -1;
-    if (end < 0) return;
+    const who = e.code === 'Space' ? 0 : e.code === 'Enter' ? 1 : -1;
+    if (who < 0) return;
     room.hide();
-    const idx = game.court[end];
-    if (idx === null) { if (end === 1 && game.players.length < 2) { game.addPlayer('Player 2'); } return; }
+    const on = game.figs.filter(F => F.idx !== null).map(F => F.idx).sort((a, b) => a - b), idx = on[who];
+    if (idx === undefined) { if (who === 1 && game.players.length < 2) game.addPlayer('Player 2'); return; }
     game.input(idx, { t: 'swing', power: 0.75, at: performance.now() });
   });
 }

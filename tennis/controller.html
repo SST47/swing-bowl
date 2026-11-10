@@ -15,10 +15,11 @@
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
     <button class="gear" id="settings">⚙︎ Settings</button>
   </div>
+  <div class="moderow" id="modeRow" hidden><button data-mode="h2h">🆚 Play each other</button><button data-mode="team">🤝 Team up vs CPU</button></div>
   <div class="state" id="state">Not connected</div>
   <div class="meter"><div id="meter"></div></div>
   <div class="readout" id="readout"></div>
-  <div class="readout" id="tally"></div>
+  <div class="readout tally" id="tally"></div>
   <div class="holdwrap">
     <button class="hold" id="hold" disabled><span class="lbl">SERVE</span><small>tap to toss, then swing</small></button>
   </div>
@@ -31,7 +32,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p style="font-size:13px">How to play: hold the phone like a racket handle. Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tap <b>SERVE</b> (or just wait) and swing as the ball comes down.</p>
+    <p style="font-size:13px">How to play: hold the phone like a racket handle. Two of you can play each other, or team up against the computer (switch at the top of the screen). Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tap <b>SERVE</b> (or just wait) and swing as the ball comes down.</p>
   </div>
 </div>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
@@ -101,12 +102,24 @@
   }
   function hint(text) { setState(text, false); hintUntil = Date.now() + 2600; clearTimeout(hintTimer); hintTimer = setTimeout(render, 2600); }
   function setState(text, go) { const el = $('state'); el.textContent = text; el.classList.toggle('go', !!go); }
+  // how you play: each other, or as a team against the computer. Either phone can switch it.
+  document.querySelectorAll('#modeRow [data-mode]').forEach(b => {
+    b.onclick = () => {
+      if (!st || st.mode === b.dataset.mode) return;
+      client.send({ t: 'mode', mode: b.dataset.mode });
+      hint(b.dataset.mode === 'team' ? 'Teaming up against the computer…' : 'Playing each other…');
+    };
+  });
   function render() {
     if (!st) return;
+    $('modeRow').hidden = false;
+    document.querySelectorAll('#modeRow [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === st.mode));
     const me = st.you !== null && st.players[st.you];
     if (me) {
       $('dot').style.background = me.color; $('myname').textContent = me.name;
-      $('tally').innerHTML = st.onCourt ? `Games <b>${st.games[st.end]}–${st.games[1 - st.end]}</b> · Points <b>${st.points[st.end]}–${st.points[1 - st.end]}</b> · Wins <b>${me.wins}</b>` : `Wins <b>${me.wins}</b>`;
+      const cam = st.view === 'you' ? '<br>📷 The camera is behind you' : st.view === 'them' ? '<br>📷 The camera is at the other end' : '';
+      const mate = st.partner ? `With <b>${SB.esc(st.partner)}</b> · ` : '';
+      $('tally').innerHTML = st.onCourt ? `${mate}Games <b>${st.games[st.end]}–${st.games[1 - st.end]}</b> · Points <b>${st.points[st.end]}–${st.points[1 - st.end]}</b> · Wins <b>${me.wins}</b>${cam}` : `Wins <b>${me.wins}</b>`;
     }
     const tap = pad.tapMode;   // no motion sensor: the button is the swing
     $('hold').disabled = tap ? !st.onCourt || st.over : !st.serving || st.state !== 'serve';
@@ -116,10 +129,11 @@
       speedText = '';
     }
     if (Date.now() < hintUntil) return;
-    if (!st.onCourt) setState(st.state === 'idle' ? 'Waiting for a match…' : 'You’re next: you’ll play the winner of this match.');
+    if (!st.onCourt) setState(st.state === 'idle' ? 'Waiting for a match…' : st.mode === 'team' ? 'You’re next: you’ll swap in after this match.' : 'You’re next: you’ll play the winner of this match.');
     else if (st.over) setState('Match over! A new one starts in a moment.');
     else if (st.serving) setState(st.state === 'toss' ? (tap ? 'Tap as the ball comes down!' : 'Swing as the ball comes down!') : tap ? 'Your serve! Tap to toss, then tap as it comes down.' : 'Your serve! Tap SERVE (or wait), then swing.', true);
     else if (st.hitting) setState(tap ? 'Here it comes… tap when the ring closes!' : 'Here it comes… swing when the ring closes!', true);
+    else if (st.partnerHitting) setState(`${st.partner}’s ball. Get ready…`);
     else if (st.state === 'serve' || st.state === 'toss') setState('Get ready to return the serve…');
     else setState('Rally! Get ready…');
   }
