@@ -17,10 +17,12 @@
     <div class="topbtns"><button class="gear hand" id="hand">✋ Righty</button><button class="gear" id="settings">⚙︎ Settings</button></div>
   </div>
   <div class="moderow" id="modeRow" hidden><button data-mode="h2h">🆚 Play each other</button><button data-mode="team">🤝 Team up vs CPU</button></div>
+  <div class="moderow runrow" id="runRow" hidden><button data-run="auto">🏃 Auto-run</button><button data-run="tilt">📱 Tilt to run</button></div>
   <div class="state" id="state">Not connected</div>
   <div class="meter"><div id="meter"></div></div>
   <div class="readout" id="readout"></div>
   <div class="readout tally" id="tally"></div>
+  <div class="steer" id="steer" hidden><div class="track"><i id="steerDot"></i></div><small>Tip your phone left or right to run</small></div>
   <div class="holdwrap">
     <div class="tilt" id="tilt" hidden><div class="tphone"><i></i></div><b>Tilt your phone up to toss</b><small>then swing as the ball comes down</small></div>
     <button class="hold" id="hold" disabled><span class="lbl">SERVE</span><small>tilt up (or tap) to toss, then swing</small></button>
@@ -34,7 +36,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
-    <p class="help">How to play: hold the phone like a racket handle. Two of you can play each other, or team up against the computer (switch at the top of the screen). Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tilt your phone up (like lifting your arm to toss the ball), then swing as the ball comes down. Tapping <b>SERVE</b> tosses it too.</p>
+    <p class="help">How to play: hold the phone like a racket handle. Two of you can play each other, or team up against the computer (switch at the top of the screen). Your player runs to the ball by themselves; you just <b>swing</b>, no buttons. Or switch on <b>Tilt to run</b> and steer them yourself: between shots, tip the phone left or right like a steering wheel. Swing when the ring around the ball closes. Swing early to pull it across the court, late to send it the other way; swing harder to hit harder, or gently for a lob. To serve, tilt your phone up (like lifting your arm to toss the ball), then swing as the ball comes down. Tapping <b>SERVE</b> tosses it too.</p>
   </div>
 </div>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
@@ -63,7 +65,7 @@
     onMessage(m) {
       if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
-      if (m && m.t === 'state' && !kicked) { st = m; hand.sync(m); render(); }
+      if (m && m.t === 'state' && !kicked) { st = m; hand.sync(m); syncRun(); render(); }
     },
   });
   // left- or right-handed, switchable any time (the big screen mirrors your player)
@@ -94,6 +96,29 @@
       else hint('You’re not on court yet: you’ll play the winner of this match.');
     },
     onHint: hint,
+  });
+  // how your player gets to the ball: by themselves, or steered by tipping the phone left and right
+  let tiltRun = store.get('run', 'auto') === 'tilt', runSentAt = 0;
+  const sendRun = () => { if (client.open) { runSentAt = Date.now(); client.send({ t: 'move', tilt: tiltRun && !pad.tapMode }); } };
+  function syncRun() {
+    const me = st && st.you !== null && st.you !== undefined ? st.players[st.you] : null;
+    if (me && !!me.tilt !== (tiltRun && !pad.tapMode) && Date.now() - runSentAt > 1500) sendRun();
+  }
+  document.querySelectorAll('#runRow [data-run]').forEach(b => {
+    b.onclick = () => {
+      const want = b.dataset.run === 'tilt';
+      if (want === tiltRun) return;
+      tiltRun = want; store.set('run', want ? 'tilt' : 'auto'); sendRun(); render();
+      hint(want ? 'Tilt to run: tip your phone left or right to move.' : 'Auto-run: your player runs to the ball by themselves.');
+    };
+  });
+  const steer = SB.tiltSteer({
+    onSteer: x => client.send({ t: 'steer', x }),
+    onValue: x => {
+      const el = $('steer'); if (el.hidden) return;
+      const reach = el.firstElementChild.clientWidth / 2 - 15;   // the track's half-width, less the ball
+      $('steerDot').style.transform = `translateX(${(x * reach).toFixed(1)}px)`; el.classList.toggle('moving', x !== 0);
+    },
   });
   // tilt the phone up (like lifting your arm to toss the ball) to start your serve
   const tilt = SB.tiltUp({ onTilt: () => {
@@ -137,6 +162,10 @@
     const tap = pad.tapMode;   // no motion sensor: the button is the swing
     const tiltNow = !!(st.onCourt && st.serving && st.state === 'serve' && !tap && !st.over);
     tilt.on = tiltNow; $('tilt').hidden = !tiltNow;
+    $('runRow').hidden = tap;   // (steering needs the motion sensors)
+    document.querySelectorAll('#runRow [data-run]').forEach(b => b.classList.toggle('on', (b.dataset.run === 'tilt') === tiltRun));
+    const steerNow = !!(tiltRun && !tap && st.onCourt && !st.over);
+    steer.on = steerNow; $('steer').hidden = !steerNow || tiltNow;
     $('hold').disabled = tap ? !st.onCourt || st.over : !st.serving || st.state !== 'serve';
     if (st.note && (!lastNote || st.note.at !== lastNote.at)) {
       lastNote = st.note;

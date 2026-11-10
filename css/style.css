@@ -63,9 +63,9 @@ kbd { background: #fff; color: var(--ink); border: 2px solid var(--ink); border-
 .hud tr.active td.cur { background: var(--ball); color: var(--ink); }
 .hud tr.active td.cur .marks { color: var(--ink); }
 
-.hud .turn { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px; background: #fff; color: var(--ink); padding: 8px 20px 9px; border-radius: 999px; font-size: 19px; font-weight: 550; white-space: nowrap; box-shadow: 0 4px 0 rgba(0,0,0,.3); }
+.hud .turn { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px; background: var(--ink); color: #fff; border: 2px solid rgba(255,255,255,.25); padding: 7px 20px 8px; border-radius: 999px; font-size: 19px; font-weight: 550; white-space: nowrap; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
 .hud .turn:empty { display: none; }
-.hud .swinging { color: var(--red); }
+.hud .swinging { color: var(--ball); }
 
 .hud .pindicator { position: absolute; right: 16px; bottom: 16px; width: 110px; background: var(--panel); border-radius: 16px; padding: 8px; border: 2px solid var(--line); }
 .hud .pindicator circle.up { fill: #fff; }
@@ -247,17 +247,34 @@ body.g-golf .sheet { background: repeating-linear-gradient(90deg, var(--turf) 0 
 .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,10,20,0.32) 100%); }
 
 /* ---------- tennis ---------- */
-.hud table.tennis { border-collapse: collapse; font-size: 19px; }
-.hud table.tennis td { padding: 2px 8px; }
-.hud table.tennis td.srv { color: var(--ball); width: 10px; padding: 0 2px; }
-.hud table.tennis td.nm i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 0 2px rgba(255,255,255,.7); }
-.hud table.tennis td.g { font-weight: 700; color: var(--ball); text-align: right; }
-.hud table.tennis td.p { font-weight: 700; text-align: right; min-width: 34px; }
+.hud table.tennis { border-collapse: separate; border-spacing: 0 5px; font-size: 20px; background: none; border: 0; padding: 0; margin: -4px 0 2px; }
+.hud table.tennis td { background: none; padding: 0 6px; min-width: 0; border-radius: 0; }
+.hud table.tennis td.srv { width: 14px; padding: 0; color: transparent; font-size: 0; }
+.hud table.tennis td.srv:not(:empty)::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 0 2px var(--ink); vertical-align: 1px; }
+.hud table.tennis td.nm { text-align: left; font-weight: 600; padding-right: 14px; }
+.hud table.tennis td.nm i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 7px; box-shadow: 0 0 0 2px rgba(255,255,255,.75); }
+.hud table.tennis td.g, .hud table.tennis td.p { font-weight: 700; text-align: center; color: var(--ink); border-radius: 9px; padding: 1px 8px; }
+.hud table.tennis td.g { background: var(--ball); min-width: 32px; }
+.hud table.tennis td.p { background: #fff; min-width: 44px; }
+.hud table.tennis td.p:empty { background: none; }
+.hud table.tennis + small { font-size: 14px; }
+.hud .tinfo[hidden] { display: none; }
+.hud .tinfo b { font-size: 26px; color: #fff; font-weight: 700; }
 @media (max-width: 1280px) { .hud .turn { bottom: 64px; } }   /* clear of the corner bar */
 .pad .moderow { display: flex; padding: 4px; gap: 4px; background: rgba(0,0,0,.2); border-radius: 16px; }
 .pad .moderow[hidden] { display: none; }
 .pad .moderow button { flex: 1; padding: 9px 6px; border-radius: 12px; border: 0; background: transparent; color: #fff; font-size: 14px; font-weight: 550; }
 .pad .moderow button.on { background: #fff; color: var(--ink); box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.pad .runrow { margin-top: -4px; }
+.pad .runrow button.on { background: var(--ball); }
+/* tilt to run: where the phone is steering, a ball on a track */
+.pad .steer { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pad .steer[hidden] { display: none; }
+.pad .steer .track { position: relative; width: 100%; height: 30px; border-radius: 15px; background: rgba(0,0,0,.22); box-shadow: inset 0 3px 0 rgba(0,0,0,.18); overflow: hidden; }
+.pad .steer .track::before { content: ''; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: rgba(255,255,255,.45); }
+.pad .steer .track i { position: absolute; left: 50%; top: 3px; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 0 3px var(--ink); }
+.pad .steer small { font-size: 14px; font-weight: 550; opacity: .9; text-shadow: 0 2px 0 rgba(0,0,0,.22); }
+.pad .steer.moving small { opacity: .6; }
 .lobby .tmodes { gap: 10px; margin: 10px 0 4px; }
 .lobby .tmodes .btn { padding: 8px 14px 9px; font-size: 15px; }
 /* tilt the phone up to toss: a little phone that does it */

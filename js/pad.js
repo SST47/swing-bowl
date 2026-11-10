@@ -263,5 +263,38 @@
     return { get on() { return on; }, set on(v) { if (!!v !== on) hist = []; on = !!v; } };
   }
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch, tiltUp });
+  /*
+   * Tilt to steer: tip the phone left or right, like a steering wheel. onSteer(x) gets -1 (full left) … 1
+   * (full right) up to 12 times a second while .on (only when it changes, and every 0.4 s to say it's still
+   * there). onValue(x) gets every update, for drawing. A swing (the phone spinning fast) reads as straight
+   * ahead for a moment, so hitting the ball doesn't send your player off sideways.
+   */
+  function tiltSteer({ onSteer, onValue, dead = 0.1, full = 0.45 }) {
+    let on = false, raw = 0, val = 0, sent = 0, sentAt = 0, busyUntil = 0, orientAt = 0, lastT = performance.now();
+    const D = Math.PI / 180;
+    // side: how far the right edge points down (1 = straight down). It reads the same held flat or upright.
+    const feed = side => { const a = Math.abs(side); raw = a < dead ? 0 : Math.sign(side) * Math.min(1, (a - dead) / (full - dead)); };
+    root.addEventListener('deviceorientation', e => {
+      if (e.beta === null || e.beta === undefined || e.gamma === null || e.gamma === undefined) return;
+      orientAt = performance.now();
+      feed(Math.sin(e.gamma * D) * Math.cos(e.beta * D));
+    });
+    root.addEventListener('devicemotion', e => {
+      const t = performance.now(), r = e.rotationRate;
+      if (r && Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0) > 250) busyUntil = t + 450;   // a swing
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x === null || t - orientAt < 1000) return;   // (orientation is better when there is one)
+      feed(Math.max(-1, Math.min(1, -g.x / 9.81)));
+    });
+    setInterval(() => {
+      const t = performance.now(), dt = Math.min(0.25, (t - lastT) / 1000); lastT = t;
+      if (t < busyUntil) val = 0; else val += (raw - val) * (1 - Math.exp(-dt / 0.07));   // (a swing stops you at once)
+      if (Math.abs(val) < 0.01) val = 0;
+      if (onValue) onValue(val);
+      if (on && (Math.abs(val - sent) > 0.05 || t - sentAt > 400)) { sent = val; sentAt = t; onSteer(Math.round(val * 100) / 100); }
+    }, 80);
+    return { get on() { return on; }, set on(v) { if (!!v !== on) sentAt = 0; on = !!v; }, get value() { return val; } };
+  }
+
+  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch, tiltUp, tiltSteer });
 })(self);

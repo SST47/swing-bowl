@@ -64,10 +64,18 @@ export function grassMaterial(map, opts = {}) {
   return m;
 }
 
+// The game's typeface for words drawn into the 3D scenes (signs, scoreboards, numbers). Text textures
+// are drawn straight away and again once the font has loaded (fontReady).
+export const FONT = "'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif";
+export const fontReady = typeof document !== 'undefined' && document.fonts && document.fonts.load
+  ? document.fonts.load("700 64px 'Fredoka'").then(f => f.length > 0, () => false) : Promise.resolve(false);
+
 export function canvasTexture(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
+  const g = c.getContext('2d');
+  draw(g, w, h);
   const t = new THREE.CanvasTexture(c);
+  if (opts.text) fontReady.then(ok => { if (!ok) return; g.clearRect(0, 0, w, h); g.shadowBlur = 0; draw(g, w, h); t.needsUpdate = true; });
   t.colorSpace = opts.linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
   if (opts.repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(opts.repeat[0], opts.repeat[1]); }
   t.anisotropy = 8;
@@ -120,7 +128,7 @@ export function makeFigure(o = {}) {
   const spine = joint(hips, 0, 0.02, 0);
   part(new THREE.CapsuleGeometry(0.17, 0.3, 6, 14), shirt, spine, 0, 0.29, 0);
   if (o.number) {   // a number on the back
-    const t = canvasTexture(128, 128, (g) => { g.fillStyle = '#' + new THREE.Color(o.numberColor ?? 0x111111).getHexString(); g.font = '800 84px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(o.number), 64, 70); });
+    const t = canvasTexture(128, 128, (g) => { g.fillStyle = '#' + new THREE.Color(o.numberColor ?? 0x111111).getHexString(); g.font = `700 84px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(o.number), 64, 70); }, { text: true });
     const num = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7 }));
     num.position.set(0, 0.33, -0.172); num.rotation.y = Math.PI; spine.add(num);
   }

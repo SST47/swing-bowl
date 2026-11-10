@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import { Reflector } from '../vendor/three/Reflector.js';
-import { rng, canvasTexture, makeFigure, samplePose, applyPose, Confetti, glowTexture, autoResolution } from './three-kit.js';
+import { rng, canvasTexture, makeFigure, samplePose, applyPose, Confetti, glowTexture, autoResolution, FONT } from './three-kit.js';
 
 const SB = self.SB, C = SB.C;
 const LANE_W = C.LANE_HALF * 2, LANE_LEN = 19.15, APPROACH = 4.6, PITCH = 1.95;   // PITCH: lane centre to lane centre
@@ -72,13 +72,13 @@ function signTexture(text, lane) {
     const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#1a0b3a'); bg.addColorStop(1, '#0b1638');
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
     g.strokeStyle = '#7b4dff'; g.lineWidth = 6; g.shadowColor = '#7b4dff'; g.shadowBlur = 20; g.strokeRect(14, 14, W - 28, H - 28);
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 150px system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 150px ${FONT}`;
     g.shadowColor = '#ff3d7f'; g.shadowBlur = 40; g.fillStyle = '#ffd1e3'; g.fillText(text, W / 2, H / 2 + 8);
     g.shadowBlur = 0; g.lineWidth = 3; g.strokeStyle = '#ff3d7f'; g.strokeText(text, W / 2, H / 2 + 8);
-    g.font = '800 64px system-ui, sans-serif'; g.shadowColor = '#26c6da'; g.shadowBlur = 24; g.fillStyle = '#bff6ff';
+    g.font = `700 64px ${FONT}`; g.shadowColor = '#26c6da'; g.shadowBlur = 24; g.fillStyle = '#bff6ff';
     g.fillText(String(lane), 80, 80); g.fillText(String(lane), W - 80, 80);
     for (let i = 0; i < 26; i++) { g.fillStyle = i % 2 ? '#26c6da' : '#ffd23f'; g.shadowColor = g.fillStyle; g.shadowBlur = 12; g.beginPath(); g.arc(60 + i * 35.5, H - 40, 4, 0, Math.PI * 2); g.fill(); }
-  });
+  }, { text: true });
 }
 
 const ballTexCache = new Map();

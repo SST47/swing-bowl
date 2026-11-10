@@ -7,7 +7,7 @@
  * centre field, y up. three.js: X = x, Y = y, Z = -z.
  */
 import * as THREE from 'three';
-import { rng, canvasTexture, grassMaterial, glowTexture, dotTexture, makeFigure, samplePose, mixPose, applyPose, Fireworks, D2R, autoResolution } from './three-kit.js';
+import { rng, canvasTexture, grassMaterial, glowTexture, dotTexture, makeFigure, samplePose, mixPose, applyPose, Fireworks, D2R, autoResolution, FONT, fontReady } from './three-kit.js';
 
 const B = self.BASEBALL, PARK = B.PARK;
 const V = (x, y, z) => new THREE.Vector3(x, y, -z);
@@ -249,7 +249,7 @@ export class Ball3D {
     S.add(new THREE.Mesh(strip(topPos), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide })));
     for (const a of [-45, -22.5, 0, 22.5, 45]) {
       const t = a * D2R, txt = String(Math.round(PARK.fence(t)));
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.4), new THREE.MeshBasicMaterial({ transparent: true, map: canvasTexture(384, 128, (g) => { g.fillStyle = '#ffffff'; g.font = '900 100px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 192, 70); }) }));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.4), new THREE.MeshBasicMaterial({ transparent: true, map: canvasTexture(384, 128, (g) => { g.fillStyle = '#ffffff'; g.font = `700 100px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 192, 70); }, { text: true }) }));
       // lie flat along the wall: it curves, so follow its tangent rather than facing home plate
       const at = (u) => new THREE.Vector3(Math.sin(u) * PARK.fence(u), 0, -Math.cos(u) * PARK.fence(u));
       const tan = at(t + 0.01).sub(at(t - 0.01)), rot = Math.atan2(-tan.z, tan.x);
@@ -337,6 +337,8 @@ export class Ball3D {
   }
 
   _scoreboard(d) {
+    if (!this.fontHooked) { this.fontHooked = true; fontReady.then(() => { const last = this._sbLast; this._sbKey = null; if (last) this._scoreboard(last); }); }   // redraw in the game font once it's loaded
+    this._sbLast = d;
     const key = JSON.stringify(d);
     if (key === this._sbKey) return;
     this._sbKey = key;
@@ -344,14 +346,14 @@ export class Ball3D {
     g.fillStyle = '#05070f'; g.fillRect(0, 0, W, H);
     g.fillStyle = 'rgba(255,255,255,0.04)'; for (let x = 0; x < W; x += 6) g.fillRect(x, 0, 2, H); for (let y = 0; y < H; y += 6) g.fillRect(0, y, W, 2);
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#ffd23f'; g.font = '900 64px system-ui, sans-serif'; g.fillText(d.title || 'HOME RUN DERBY', W / 2, 62);
-    if (d.flash) { g.fillStyle = '#ff5a5f'; g.font = '900 120px system-ui, sans-serif'; g.fillText(d.flash, W / 2, 220); }
+    g.fillStyle = '#ffd23f'; g.font = `700 64px ${FONT}`; g.fillText(d.title || 'HOME RUN DERBY', W / 2, 62);
+    if (d.flash) { g.fillStyle = '#ff5a5f'; g.font = `700 120px ${FONT}`; g.fillText(d.flash, W / 2, 220); }
     else if (d.name) {
-      g.fillStyle = d.color || '#ffffff'; g.font = '800 92px system-ui, sans-serif'; g.fillText(d.name.toUpperCase(), W / 2, 170);
-      g.fillStyle = '#ffffff'; g.font = '700 56px system-ui, sans-serif';
+      g.fillStyle = d.color || '#ffffff'; g.font = `700 92px ${FONT}`; g.fillText(d.name.toUpperCase(), W / 2, 170);
+      g.fillStyle = '#ffffff'; g.font = `600 56px ${FONT}`;
       g.fillText(`HR ${d.hrs}    ·    SWINGS LEFT ${d.left}`, W / 2, 268);
-      if (d.last) { g.fillStyle = '#9fe8ff'; g.font = '700 46px system-ui, sans-serif'; g.fillText(d.last, W / 2, 350); }
-    } else { g.fillStyle = '#ffffff'; g.font = '700 64px system-ui, sans-serif'; g.fillText('SCAN TO PLAY', W / 2, 220); }
+      if (d.last) { g.fillStyle = '#9fe8ff'; g.font = `600 46px ${FONT}`; g.fillText(d.last, W / 2, 350); }
+    } else { g.fillStyle = '#ffffff'; g.font = `600 64px ${FONT}`; g.fillText('SCAN TO PLAY', W / 2, 220); }
     this.sbTex.needsUpdate = true;
   }
 

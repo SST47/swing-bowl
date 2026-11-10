@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three';
 import { Sky } from '../vendor/three/Sky.js';
-import { rng, canvasTexture, glowTexture, dotTexture, makeFigure, samplePose, mixPose, applyPose, Confetti, D2R, autoResolution } from './three-kit.js';
+import { rng, canvasTexture, glowTexture, dotTexture, makeFigure, samplePose, mixPose, applyPose, Confetti, D2R, autoResolution, FONT, fontReady } from './three-kit.js';
 
 const T = self.TENNIS, C = T.COURT;
 const V = (x, y, z) => new THREE.Vector3(x, y, -z);
@@ -106,12 +106,26 @@ function seatsTexture(color) {
     for (let r = 0; r < 8; r++) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, r * 32 + 26, 256, 6); }
   }, { repeat: [12, 3] });
 }
-function windscreenTexture(text) {
-  return canvasTexture(2048, 128, (g) => {
-    g.fillStyle = '#16324f'; g.fillRect(0, 0, 2048, 128);
-    g.fillStyle = 'rgba(255,255,255,0.9)'; g.font = '800 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (let i = 0; i < 4; i++) g.fillText(text, 256 + i * 512, 66);
-  });
+// a tennis ball drawn flat: yellow felt and the white seam
+function drawBall(g, x, y, r) {
+  g.fillStyle = '#dff02f'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.clip();
+  g.strokeStyle = '#ffffff'; g.lineWidth = r * 0.17;
+  g.beginPath(); g.arc(x - r * 1.18, y, r * 0.82, 0, Math.PI * 2); g.stroke();
+  g.beginPath(); g.arc(x + r * 1.18, y, r * 0.82, 0, Math.PI * 2); g.stroke();
+  g.restore();
+}
+// the windscreens behind the baselines (26 m × 2.6 m: drawn at the same 10:1 shape so nothing stretches)
+function windscreenTexture() {
+  return canvasTexture(2560, 256, (g, W, H) => {
+    g.fillStyle = '#154a2c'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#e4f33b'; g.fillRect(0, 16, W, 7); g.fillRect(0, H - 23, W, 7);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 120px ${FONT}`;
+    if ('fontStretch' in g) g.fontStretch = 'semi-expanded';
+    g.fillStyle = '#ffffff';
+    for (const cx of [W * 0.27, W * 0.73]) g.fillText('Swing Tennis', cx, H / 2 + 6);
+    drawBall(g, W / 2, H / 2, 46); drawBall(g, 86, H / 2, 30); drawBall(g, W - 86, H / 2, 30);
+  }, { text: true });
 }
 function ballTexture() {
   return canvasTexture(256, 128, (g) => {
@@ -213,7 +227,7 @@ export class Tennis3D {
     const postM = new THREE.MeshStandardMaterial({ color: 0x1d4430, roughness: 0.5, metalness: 0.3 });
     for (const x of [-C.POST_X, C.POST_X]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, C.POST_H + 0.05, 12).translate(0, (C.POST_H + 0.05) / 2, 0), postM); p.position.x = x; p.castShadow = true; S.add(p); }
     // windscreens behind the baselines and low walls along the sides
-    const ws = windscreenTexture('SWING TENNIS');
+    const ws = windscreenTexture();
     for (const z of [-19.5, 19.5]) { const w = new THREE.Mesh(new THREE.PlaneGeometry(26, 2.6), new THREE.MeshStandardMaterial({ map: ws, roughness: 0.8 })); w.position.set(0, 1.3, z); if (z < 0) w.rotation.y = 0; else w.rotation.y = Math.PI; S.add(w); }
     const side = new THREE.MeshStandardMaterial({ color: 0x16324f, roughness: 0.8 });
     for (const x of [-12.5, 12.5]) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 39), side); w.position.set(x, 0.6, 0); w.receiveShadow = true; S.add(w); }
@@ -322,23 +336,26 @@ export class Tennis3D {
   }
 
   _scoreboard(game) {
+    if (!this.fontHooked) { this.fontHooked = true; fontReady.then(() => { this.sbKey = null; }); }   // redraw in the game font once it's loaded
     const s = game.score, info = [0, 1].map(e => ({ w: game.who(e), g: s.games[e], p: game.over ? '' : s.label(e), srv: s.server === e && !game.over }));
     const key = JSON.stringify(info) + game.state;
     if (key === this.sbKey) return;
     this.sbKey = key;
     const g = this.sbCanvas.getContext('2d');
-    g.fillStyle = '#0b1220'; g.fillRect(0, 0, 1024, 300);
-    g.fillStyle = '#ffd23f'; g.font = '800 34px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
-    g.fillText('SWING TENNIS', 36, 40);
-    g.fillStyle = '#7f8aa3'; g.font = '700 26px system-ui, sans-serif'; g.textAlign = 'right'; g.fillText('GAMES', 790, 40); g.fillText('POINTS', 980, 40);
+    g.fillStyle = '#0f2a1a'; g.fillRect(0, 0, 1024, 300);
+    g.strokeStyle = '#e4f33b'; g.lineWidth = 6; g.strokeRect(12, 12, 1000, 276);
+    g.textBaseline = 'middle';
+    g.fillStyle = '#e4f33b'; g.font = `600 36px ${FONT}`; g.textAlign = 'left'; g.fillText('Swing Tennis', 44, 54);
+    g.fillStyle = '#9cc7a8'; g.font = `500 28px ${FONT}`; g.textAlign = 'center'; g.fillText('Games', 800, 54); g.fillText('Points', 940, 54);
     info.forEach((r, i) => {
-      const y = 120 + i * 105;
-      g.fillStyle = r.w.color; g.fillRect(36, y - 34, 14, 68);
-      const nm = r.w.name.toUpperCase().slice(0, 22);
-      g.fillStyle = '#ffffff'; g.font = `800 ${nm.length > 12 ? Math.max(34, Math.round(58 * 12 / nm.length)) : 58}px system-ui, sans-serif`; g.textAlign = 'left';
-      g.fillText(nm, 70, y, 520);
-      if (r.srv) { g.fillStyle = '#d8ef3c'; g.beginPath(); g.arc(620, y, 14, 0, Math.PI * 2); g.fill(); }
-      g.textAlign = 'right'; g.fillStyle = '#ffd23f'; g.fillText(String(r.g), 780, y); g.fillStyle = '#ffffff'; g.fillText(r.p, 980, y);
+      const y = 140 + i * 92;
+      g.fillStyle = r.w.color; g.beginPath(); g.arc(62, y, 14, 0, Math.PI * 2); g.fill();
+      const nm = r.w.name.slice(0, 22);
+      g.fillStyle = '#ffffff'; g.font = `600 ${nm.length > 13 ? Math.max(36, Math.round(62 * 13 / nm.length)) : 62}px ${FONT}`; g.textAlign = 'left';
+      g.fillText(nm, 96, y + 2, 560);
+      if (r.srv) drawBall(g, 690, y, 18);
+      g.font = `700 72px ${FONT}`; g.textAlign = 'center';
+      g.fillStyle = '#e4f33b'; g.fillText(String(r.g), 800, y + 2); g.fillStyle = '#ffffff'; g.fillText(r.p, 940, y + 2);
     });
     this.sbTex.needsUpdate = true;
   }

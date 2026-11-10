@@ -18,6 +18,9 @@
   const REACT = 0.2;            // s before a player starts running for the other side's shot
   const REACT_SERVE = 0.1;      // ...and for a serve (the returner is ready for it)
   const REACH = 1.25;           // m: further than this from the ball's line and it gets past you
+  const REACH_TILT = 1.6;       // ...a little more for someone steering by tilting their phone
+  const TILT_HELP = 2.5;        // m/s: in the last moment before your ball, a tilt-steered player drifts into range
+  const ACCEL_TILT = 34;        // m/s²: someone steering turns round quicker (so it feels like it follows the phone)
   const CPU_SD = 0.09;          // the computer's timing spread (s)
   const HALF = 2.6;             // doubles: where each partner stands across their half of the court
   const SEAM_PAUSE = 0.22;      // doubles: extra moment to react to a ball down the middle
@@ -71,6 +74,8 @@
     _endFigs(end) { const r = []; this.figs.forEach((f, i) => { if (f.end === end) r.push(i); }); return r; }
     serverFig() { const ids = this._endFigs(this.score.server); return ids[this.doubles ? this.serveSlot[this.score.server] : 0]; }
     isCpu(fi) { const f = this.figs[fi]; return !f || f.idx === null; }
+    // steering their own player by tilting the phone (instead of running automatically)
+    isTilt(fi) { const f = this.figs[fi]; return !!(f && f.idx !== null && this.players[f.idx] && this.players[f.idx].tilt); }
     isLefty(fi) { const f = this.figs[fi]; return !!(f && f.idx !== null && this.players[f.idx] && this.players[f.idx].lefty); }
     figWho(fi) { const f = this.figs[fi]; return f && f.idx !== null && this.players[f.idx] ? this.players[f.idx] : CPU; }
     figOf(idx) { return idx === null || idx === undefined ? -1 : this.figs.findIndex(f => f.idx === idx); }
@@ -168,7 +173,7 @@
       const sf = this.figs.length ? this.serverFig() : null;
       return {
         state: this.state, over: this.over, started: this.started, mode: this.mode, doubles: this.doubles,
-        players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins, lefty: !!q.lefty })),
+        players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins, lefty: !!q.lefty, tilt: !!q.tilt })),
         lineup: this.lineup.map(a => a.slice()), court: this.court, server: s.server, serverFig: sf,
         games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd,
         cur: X ? this.figs[X.fig].idx : serving && sf !== null ? this.figs[sf].idx : null,
@@ -179,8 +184,10 @@
     // ---------- input ----------
     input(idx, m) {
       if (m.t === 'mode') return this.setMode(m.mode);   // anyone in the room can switch how you play
+      if (m.t === 'move') { const p = this.players[idx]; if (p && !!p.tilt !== !!m.tilt) { p.tilt = !!m.tilt; this._emit(); } return true; }   // run automatically, or steer by tilting
       const fi = this.figOf(idx);
       if (fi < 0) return false;
+      if (m.t === 'steer') { const F = this.figs[fi]; F.steer = clamp(+m.x || 0, -1, 1); F.steerAt = now(); return true; }
       if (m.t === 'arm') { if (fi === this.serverFig() && this.state === 'serve') this.armed = true; return true; }
       if (m.t === 'swing') {
         const at = m.at ? m.at / 1000 : now() - 0.06;
@@ -220,19 +227,22 @@
       if (this.state !== 'rally' || !X || X.fig !== fi || X.done) return;
       const raw = at - X.T, dt = raw - (cpu ? 0 : this._lag(fi));
       if (dt < -WINDOW) { if (!X.early) X.early = { at }; F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = X.forehand ? 'fh' : 'bh'; return; }   // way early: a better one may follow
-      F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = X.forehand ? 'fh' : 'bh';
+      F.swingAt = cpu ? at : tNow + SWING_LEAD;
       if (!cpu) this._learn(fi, raw);
       if (dt > WINDOW) { X.done = true; if (!cpu) this._note(fi, `Missed: late by ${Math.round(dt * 1000)} ms`); return; }
       // too far away to get a racket on it (a wide, fast ball): a clean winner
       this._moveTo(tNow);   // players are moved up to this moment (a message can land between frames)
-      const P = this._posAt(fi, at), far = Math.hypot(P.x - F.goal.x, P.z - F.goal.z);
-      if (far > REACH) { X.done = true; if (!cpu) this._note(fi, 'Couldn’t reach that one'); return; }
+      const P = this._posAt(fi, at), tilt = this.isTilt(fi);
+      if (tilt) X.forehand = Math.abs(P.x - X.fhX) <= Math.abs(P.x - X.bhX) + 0.3;   // steering: you play the side you got to
+      const far = Math.hypot(P.x - (tilt ? (X.forehand ? X.fhX : X.bhX) : F.goal.x), P.z - F.goal.z);
+      if (far > (tilt ? REACH_TILT : REACH)) { X.done = true; if (!cpu) this._note(fi, 'Couldn’t reach that one'); return; }
       // a stretch or a fast ball makes it harder to play well
       const inKmh = this.lastShot ? this.lastShot.kmh : 80, onServe = this.lastShot && this.lastShot.kind === 'serve';
       const pace = onServe ? 0.3 * clamp((inKmh - 110) / 60, 0, 1) : 0.45 * clamp((inKmh - 95) / 70, 0, 1);   // (a returner expects a fast serve)
-      const pressure = clamp(0.8 * Math.max(0, far - 0.4) / (REACH - 0.4) + pace, 0, 1);
+      const pressure = clamp(0.8 * Math.max(0, far - 0.4) / ((tilt ? REACH_TILT : REACH) - 0.4) + pace, 0, 1);
       const from = this._ballAt(at) || X.p;
       if (cpu) power = this._cpuPower(pressure, inKmh, X.p);
+      F.swingKind = X.forehand ? 'fh' : 'bh';
       const sh = stroke({ dt, power, from, side: F.side, forehand: X.forehand, lefty: this.isLefty(fi), pressure,
         aimX: cpu ? this._cpuAim(F.end, pressure) : null, lean: this._openX(1 - F.end) });   // good timing finds the open court
       X.done = true;
@@ -272,6 +282,10 @@
       const ids = this._endFigs(end);
       if (ids.length < 2) return ids[0];
       const [a, b] = ids, A = this.figs[a];
+      if (this.isTilt(a) || this.isTilt(b)) {   // someone steering themselves: whoever's nearer takes it
+        const da = Math.abs(A.pos.x - p.x), db = Math.abs(this.figs[b].pos.x - p.x);
+        if (Math.abs(da - db) > 1.2) return da < db ? a : b;
+      }
       if (Math.abs(p.x) > 0.9) return Math.sign(p.x) === Math.sign(A.home) ? a : b;
       return this.lastHit[end] === a ? b : a;
     }
@@ -295,7 +309,7 @@
         const right = side === -1 ? 1 : -1, P = R.pos, hand = this.isLefty(ri) ? -1 : 1;   // the racket side
         const fhX = hp.p.x - 0.75 * right * hand, bhX = hp.p.x + 0.75 * right * hand;
         const forehand = Math.abs(fhX - P.x) <= Math.abs(bhX - P.x) + 0.6;   // forehands are preferred
-        this.expect = { end: to, fig: ri, T: at + hp.t, p: hp.p, forehand, i: hp.i };
+        this.expect = { end: to, fig: ri, T: at + hp.t, p: hp.p, forehand, i: hp.i, fhX, bhX };
         // doubles: a ball down the middle makes partners hesitate over who takes it
         const seam = dbl && Math.abs(hp.p.x) < 0.9 ? SEAM_PAUSE : 0;
         R.next = { goal: { x: forehand ? fhX : bhX, z: hp.p.z + side * 0.45 }, at: at + (kind === 'serve' ? REACT_SERVE : REACT) + seam };
@@ -485,15 +499,30 @@
     _move(dt, t) {
       if (!(dt > 0)) return;
       const n = Math.ceil(dt * 120), h = dt / n, vmax = this.state === 'rally' || this.state === 'toss' ? SPEED : JOG;
+      const X = this.expect;
       for (let k = 1; k <= n; k++) {
         const tk = t - dt + k * h;
-        for (const E of this.figs) {
+        for (let fi = 0; fi < this.figs.length; fi++) {
+          const E = this.figs[fi];
           if (E.next && tk >= E.next.at) { E.goal = E.next.goal; E.next = null; }
           const dx = E.goal.x - E.pos.x, dz = E.goal.z - E.pos.z, d = Math.hypot(dx, dz);
           // speed we'd like: enough to arrive, easing in at the end
           const want = Math.min(vmax, d * 4);
-          const tx = d > 1e-3 ? dx / d * want : 0, tz = d > 1e-3 ? dz / d * want : 0;
-          const ax = tx - E.vel.x, az = tz - E.vel.z, a = Math.hypot(ax, az), f = a > ACCEL * h ? ACCEL * h / a : 1;
+          let tx = d > 1e-3 ? dx / d * want : 0, tz = d > 1e-3 ? dz / d * want : 0, acc = ACCEL;
+          // steering by tilt, in a rally: left and right as you see them on the big screen (front to back
+          // stays automatic). In the last moment before your ball you drift the rest of the way into range.
+          if (this.state === 'rally' && this.isTilt(fi)) {
+            const scr = this.camEnd === 0 ? 1 : -1, steer = tk - (E.steerAt || -9) < 1 ? E.steer || 0 : 0;
+            tx = steer * SPEED * scr;
+            if (X && X.fig === fi && !X.done && tk > X.T - 0.35) {
+              const gx = Math.abs(E.pos.x - X.fhX) <= Math.abs(E.pos.x - X.bhX) + 0.3 ? X.fhX : X.bhX;
+              tx = tx * 0.5 + clamp((gx - E.pos.x) * 6, -TILT_HELP, TILT_HELP);
+            }
+            tz = clamp(dz * 4, -SPEED, SPEED);
+            if (Math.abs(E.pos.x) > COURT.DW + 3 && Math.sign(tx) === Math.sign(E.pos.x)) tx = 0;   // the stands are in the way
+            acc = ACCEL_TILT;
+          }
+          const ax = tx - E.vel.x, az = tz - E.vel.z, a = Math.hypot(ax, az), f = a > acc * h ? acc * h / a : 1;
           E.vel.x += ax * f; E.vel.z += az * f;
           E.pos.x += E.vel.x * h; E.pos.z += E.vel.z * h;
           if (k === n || k % 4 === 0) E.hist.push({ t: tk, x: E.pos.x, z: E.pos.z });
@@ -518,7 +547,8 @@
         this.el.score.innerHTML = `<table class="tennis">${row(0)}${row(1)}</table><small>${MODES[this.mode]} · first to ${TO_GAMES} games</small>`;
       }
       const ls = this.lastShot;
-      this.el.info.innerHTML = ls ? `${ls.kind === 'serve' ? 'Serve' : 'Shot'}<br><b>${ls.kmh} km/h</b>` : 'Tennis';
+      this.el.info.innerHTML = ls ? `${ls.kind === 'serve' ? 'Serve' : 'Last shot'}<br><b>${ls.kmh}</b> km/h` : '';
+      this.el.info.parentElement.hidden = !ls;
       let turn = '';
       const si = this.figs.length ? this.serverFig() : null;
       if (this.state === 'serve' || this.state === 'toss') turn = this.isCpu(si) ? 'CPU to serve' : this.state === 'serve' ? `${esc(this.figWho(si).name)} to serve · tilt your phone up to toss` : `${esc(this.figWho(si).name)}: swing as the ball comes down`;
