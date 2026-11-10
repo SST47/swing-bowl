@@ -13,7 +13,10 @@
   const GRACE = 0.45;          // s after the ideal moment that a swing message may still arrive
   const BIAS_MAX = 0.25;
   const SPEED = 6.8, ACCEL = 20; // how fast players get to the ball (m/s, m/s²)
+  const JOG = 3.4;              // ...and how fast they wander into place between points
+  const SWING_LEAD = 0.04;      // a phone's swing is drawn reaching contact this long after it arrives (it lands a little late)
   const REACT = 0.2;            // s before a player starts running for the other side's shot
+  const REACT_SERVE = 0.1;      // ...and for a serve (the returner is ready for it)
   const REACH = 1.25;           // m: further than this from the ball's line and it gets past you
   const CPU_SD = 0.09;          // the computer's timing spread (s)
   const HALF = 2.6;             // doubles: where each partner stands across their half of the court
@@ -36,6 +39,7 @@
       this.camEnd = 0;          // the end the camera sits behind
       this.flipView = false;    // change ends (the camera) before the next point
       this.serveSlot = [0, 0];  // doubles: which partner serves next, per end
+      this.lastHit = [null, null];   // the figure that last hit for each end
       this.matches = 0;
       this.score = new Score(TO_GAMES);
       this.state = 'idle'; this.timer = 0; this.over = false; this.started = false;
@@ -144,7 +148,7 @@
       this._newMatch();
     }
     _newMatch() {
-      this.score = new Score(TO_GAMES); this.faults = 0; this.serveSlot = [0, 0];
+      this.score = new Score(TO_GAMES); this.faults = 0; this.serveSlot = [0, 0]; this.lastHit = [null, null];
       this.over = false;
       this._buildFigs();
       this.ball = null; this.toss = null; this.expect = null; this.cpuSwing = null;
@@ -198,12 +202,12 @@
       // the serve
       if (this.state === 'toss' && fi === this.serverFig()) {
         const raw = at - (this.toss.t0 + this.toss.contactT), dt = raw - (cpu ? 0 : this._lag(fi));
-        if (dt < -WINDOW) { F.swingAt = Math.min(tNow, at); F.swingKind = 'serve'; this._note(fi, 'Too early: let the ball come down'); return; }
-        F.swingAt = Math.max(tNow - 0.25, Math.min(tNow, at)); F.swingKind = 'serve';
+        if (dt < -WINDOW) { F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = 'serve'; this._note(fi, 'Too early: let the ball come down'); return; }
+        F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = 'serve';
         if (!cpu) this._learn(fi, raw);
         const from = tossAt(this.toss.hand, Math.max(0, at - this.toss.t0));
         const second = this.faults === 1;
-        if (cpu) power = second ? 0.45 + Math.random() * 0.35 : 0.6 + Math.random() * 0.38;
+        if (cpu) power = second ? 0.45 + Math.random() * 0.3 : 0.5 + Math.random() * 0.4;
         const sv = serve({ dt, power, from, side: F.side, deuce: this.score.deuceSide, second });
         if (!sv) { this._note(fi, dt > 0 ? 'Too late: hit it as it falls' : 'Too early'); return; }   // a whiff: the toss just drops
         this.toss = null; this.started = true;
@@ -215,8 +219,8 @@
       const X = this.expect;
       if (this.state !== 'rally' || !X || X.fig !== fi || X.done) return;
       const raw = at - X.T, dt = raw - (cpu ? 0 : this._lag(fi));
-      if (dt < -WINDOW) { if (!X.early) X.early = { at }; F.swingAt = Math.max(tNow - 0.25, Math.min(tNow, at)); F.swingKind = X.forehand ? 'fh' : 'bh'; return; }   // way early: a better one may follow
-      F.swingAt = Math.max(tNow - 0.25, Math.min(tNow, at)); F.swingKind = X.forehand ? 'fh' : 'bh';
+      if (dt < -WINDOW) { if (!X.early) X.early = { at }; F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = X.forehand ? 'fh' : 'bh'; return; }   // way early: a better one may follow
+      F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = X.forehand ? 'fh' : 'bh';
       if (!cpu) this._learn(fi, raw);
       if (dt > WINDOW) { X.done = true; if (!cpu) this._note(fi, `Missed: late by ${Math.round(dt * 1000)} ms`); return; }
       // too far away to get a racket on it (a wide, fast ball): a clean winner
@@ -224,8 +228,9 @@
       const P = this._posAt(fi, at), far = Math.hypot(P.x - F.goal.x, P.z - F.goal.z);
       if (far > REACH) { X.done = true; if (!cpu) this._note(fi, 'Couldn’t reach that one'); return; }
       // a stretch or a fast ball makes it harder to play well
-      const inKmh = this.lastShot ? this.lastShot.kmh : 80;
-      const pressure = clamp(0.8 * Math.max(0, far - 0.4) / (REACH - 0.4) + 0.45 * clamp((inKmh - 95) / 70, 0, 1), 0, 1);
+      const inKmh = this.lastShot ? this.lastShot.kmh : 80, onServe = this.lastShot && this.lastShot.kind === 'serve';
+      const pace = onServe ? 0.3 * clamp((inKmh - 110) / 60, 0, 1) : 0.45 * clamp((inKmh - 95) / 70, 0, 1);   // (a returner expects a fast serve)
+      const pressure = clamp(0.8 * Math.max(0, far - 0.4) / (REACH - 0.4) + pace, 0, 1);
       const from = this._ballAt(at) || X.p;
       if (cpu) power = this._cpuPower(pressure, inKmh, X.p);
       const sh = stroke({ dt, power, from, side: F.side, forehand: X.forehand, lefty: this.isLefty(fi), pressure,
@@ -261,18 +266,20 @@
     }
     _timingText(dt) { const ms = Math.round(dt * 1000); return Math.abs(ms) < 40 ? 'Perfect timing!' : ms < 0 ? `Early by ${-ms} ms` : `Late by ${ms} ms`; }
 
-    // which partner takes a ball at `end` heading for point p: whoever's half it's in (near the middle, whoever's closer)
+    // which partner takes a ball at `end` heading for point p: whoever's half it's in; down the middle,
+    // whoever didn't hit their side's last ball (so partners share the middle)
     _receiver(end, p) {
       const ids = this._endFigs(end);
       if (ids.length < 2) return ids[0];
-      const [a, b] = ids, A = this.figs[a], B = this.figs[b];
-      if (Math.abs(p.x) > 0.6) return Math.sign(p.x) === Math.sign(A.home) ? a : b;
-      return Math.abs(A.pos.x - p.x) <= Math.abs(B.pos.x - p.x) ? a : b;
+      const [a, b] = ids, A = this.figs[a];
+      if (Math.abs(p.x) > 0.9) return Math.sign(p.x) === Math.sign(A.home) ? a : b;
+      return this.lastHit[end] === a ? b : a;
     }
 
     // the ball leaves figure `fi`'s racket at time `at`
     _launch(fi, from, sh, at, kind) {
       const H = this.figs[fi], end = H.end, dbl = this.doubles;
+      this.lastHit[end] = fi;
       const flight = fly(from, sh.v, sh.spin);
       this.ball = { flight, t0: at, hitter: end, hitterFig: fi, kind, next: 0 };
       this.lastShot = { kmh: Math.round(Math.hypot(sh.v.x, sh.v.y, sh.v.z) * 3.6), kind };
@@ -291,7 +298,7 @@
         this.expect = { end: to, fig: ri, T: at + hp.t, p: hp.p, forehand, i: hp.i };
         // doubles: a ball down the middle makes partners hesitate over who takes it
         const seam = dbl && Math.abs(hp.p.x) < 0.9 ? SEAM_PAUSE : 0;
-        R.next = { goal: { x: forehand ? fhX : bhX, z: hp.p.z + side * 0.45 }, at: at + REACT + seam };
+        R.next = { goal: { x: forehand ? fhX : bhX, z: hp.p.z + side * 0.45 }, at: at + (kind === 'serve' ? REACT_SERVE : REACT) + seam };
         if (this.isCpu(ri)) this.cpuSwing = { fig: ri, at: this.expect.T + gauss() * this._cpuSd(to), power: 0.6 };
       }
       // in doubles the partner of whoever's chasing it covers their own half
@@ -445,7 +452,7 @@
           this.toss = { hand, t0: t, contactT: tossContactT(hand) };
           S.tossAt = t;
           this.state = 'toss';
-          if (this.isCpu(si)) this.cpuSwing = { fig: si, at: t + this.toss.contactT + gauss() * 0.06, power: 0.7 };
+          if (this.isCpu(si)) this.cpuSwing = { fig: si, at: t + this.toss.contactT + gauss() * 0.07, power: 0.7 };
           this._renderTop(); this._emit();
         }
       } else if (this.state === 'toss') {
@@ -477,14 +484,14 @@
     _moveTo(t) { const dt = Math.max(0, Math.min(1.5, t - this.movedTo)); this.movedTo = Math.max(this.movedTo, t); this._move(dt, t); }
     _move(dt, t) {
       if (!(dt > 0)) return;
-      const n = Math.ceil(dt * 120), h = dt / n;
+      const n = Math.ceil(dt * 120), h = dt / n, vmax = this.state === 'rally' || this.state === 'toss' ? SPEED : JOG;
       for (let k = 1; k <= n; k++) {
         const tk = t - dt + k * h;
         for (const E of this.figs) {
           if (E.next && tk >= E.next.at) { E.goal = E.next.goal; E.next = null; }
           const dx = E.goal.x - E.pos.x, dz = E.goal.z - E.pos.z, d = Math.hypot(dx, dz);
           // speed we'd like: enough to arrive, easing in at the end
-          const want = Math.min(SPEED, d * 4);
+          const want = Math.min(vmax, d * 4);
           const tx = d > 1e-3 ? dx / d * want : 0, tz = d > 1e-3 ? dz / d * want : 0;
           const ax = tx - E.vel.x, az = tz - E.vel.z, a = Math.hypot(ax, az), f = a > ACCEL * h ? ACCEL * h / a : 1;
           E.vel.x += ax * f; E.vel.z += az * f;

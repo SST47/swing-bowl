@@ -164,18 +164,19 @@
   }
 
   // Serve from contact point `from` by the server on `side`, on the deuce or ad half. A first serve
-  // goes for the lines (out wide or down the T) and can miss; a second serve plays it safe.
+  // goes for the lines (out wide or down the T) and can miss, the more so the harder it's hit; a second
+  // serve plays it safe (and slower).
   function serve({ dt, power, from, side, deuce, second = false, rng = Math.random }) {
     const a = Math.abs(dt);
     if (a > WINDOW) return null;
     const q = 1 - (a / WINDOW) ** 2;
     const box = serviceBox(side, deuce);
     const xs = box.x0 + box.x1 > 0 ? 1 : -1, zs = box.z0 + box.z1 > 0 ? 1 : -1;
-    const wild = (1 - q) * 1.6 + (second ? 0 : clamp(power - 0.55, 0, 1) * 0.9);
+    const wild = (1 - q) * 1.6 + (second ? 0 : clamp(power - 0.5, 0, 1) * 1.4);
     const line = second ? COURT.W * 0.45 : rng() < 0.5 ? 0.55 : COURT.W - 0.6;   // from the centre line
     // late pushes it wider, early drags it in towards the T
-    const tx = xs * (line + clamp(dt / 0.2, -1, 1) * 0.9) + gauss(rng) * ((second ? 0.3 : 0.42) + wild * 0.5);
-    let tz = zs * (COURT.SERVICE - (second ? 1.6 : 0.85) + gauss(rng) * ((second ? 0.32 : 0.45) + wild * 0.5));
+    const tx = xs * (line + clamp(dt / 0.2, -1, 1) * 0.9) + gauss(rng) * ((second ? 0.3 : 0.5) + wild * 0.55);
+    let tz = zs * (COURT.SERVICE - (second ? 1.6 : 0.85) + gauss(rng) * ((second ? 0.32 : 0.5) + wild * 0.5));
     const speed = second ? 22 + 10 * power * (0.6 + 0.4 * q) : 26 + 20 * power * (0.6 + 0.4 * q);
     let clear = second ? 0.35 : 0.12, error = null;
     if (rng() < (second ? 0.02 : 0.05) + (1 - q) * (second ? 0.15 : 0.3)) { tz = zs * (0.8 + rng() * 2.5); clear = -(0.1 + rng() * 0.3); error = 'net'; }

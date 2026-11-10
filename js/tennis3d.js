@@ -345,6 +345,7 @@ export class Tennis3D {
 
   render(game, dt, t) {
     this.uTime.value = t;
+    if (game.state !== this.lastState) { this.lastState = game.state; this.stateAt = t; }
     const S = this.scene;
     // players (rebuilt when who's playing changes)
     const figs = game.figs;
@@ -386,18 +387,23 @@ export class Tennis3D {
     // getting ready for the ball: take the racket back as it comes
     if (X && X.fig === end && !X.done) pose = mixPose(pose, X.forehand ? FH_BACK : BH_BACK, smooth(X.T - 0.75, X.T - 0.22, t));
     if (serving) {
-      if (game.state === 'serve') pose = S_STANCE;
+      if (game.state === 'serve') pose = mixPose(pose, S_STANCE, smooth(0, 0.45, t - this.stateAt) * (1 - smooth(0.6, 2.5, speed)));   // settle into the stance once in place
       else { const st = t - E.tossAt, ct = game.toss ? game.toss.contactT : 1; pose = samplePose([{ t: 0, pose: S_STANCE }, { t: 0.3, pose: S_TOSS }, { t: Math.max(0.5, ct - 0.2), pose: S_TROPHY }], st); }
     }
     // a swing (timed so contact lands on the swing's peak)
     const since = t - E.swingAt + CONTACT;
     if (since >= 0 && since < 1.4) pose = samplePose(E.swingKind === 'serve' ? SERVE_KEYS : E.swingKind === 'fh' ? FH_KEYS : BH_KEYS, since);
-    // after a point
-    if (E.mood && game.state === 'point') {
-      const k = smooth(0.2, 0.6, t - E.moodAt), m = E.mood === 'win' ? WIN : E.mood === 'lose' ? LOSE : YES;
+    // after a point: celebrate (or not), and ease out of it when the next point starts
+    if (E.mood && game.state === 'point') { P.mood = E.mood; P.moodAt = E.moodAt; }
+    P.moodW = Math.max(0, Math.min(1, (P.moodW || 0) + (E.mood && game.state === 'point' ? dt / 0.4 : -dt / 0.35)));
+    if (P.mood && P.moodW > 0) {
+      const k = Math.min(smooth(0.2, 0.6, t - P.moodAt), smooth(0, 1, P.moodW)), m = P.mood === 'win' ? WIN : P.mood === 'lose' ? LOSE : YES;
       pose = mixPose(pose, m, k);
-      if (E.mood === 'win') pose = Object.assign({}, pose, { lift: (pose.lift || 0) + Math.max(0, Math.sin((t - E.moodAt) * 9)) * 0.12 * k });
+      if (P.mood === 'win') pose = Object.assign({}, pose, { lift: (pose.lift || 0) + Math.max(0, Math.sin((t - P.moodAt) * 9)) * 0.12 * k });
     }
+    // a light smoothing pass catches any remaining jumps between poses (quicker during a stroke)
+    P.pose = P.pose ? mixPose(P.pose, pose, 1 - Math.exp(-dt * (since >= 0 && since < 0.7 ? 60 : 26))) : pose;
+    pose = P.pose;
     applyPose(f, pose);
     // face the net; when sprinting, turn part of the way toward where you're running
     let yaw = facing;
@@ -419,8 +425,35 @@ export class Tennis3D {
     P.racket.matrixWorldNeedsUpdate = true;
   }
 
+  // The ball as shown. A phone's swing reaches the big screen a moment after the real swing, so while one
+  // may still be on its way the ball eases up near that player's racket, and when the shot lands the ball
+  // slides onto its true path (which started a moment ago) instead of jumping.
+  _shownBall(game, t, dt) {
+    const slow = u => (u < 0.3 ? u * 0.35 : u < 0.5 ? 0.105 + (u - 0.3) * 1.975 : u);   // seconds past contact -> shown
+    const X = game.expect, B = game.ball;
+    let tb = t;
+    if (game.toss) { const c = game.toss.t0 + game.toss.contactT; if (!game.isCpu(game.serverFig()) && t > c) tb = c + slow(t - c); }
+    else if (B && X && !X.done && !game.isCpu(X.fig) && t > X.T) tb = X.T + slow(t - X.T);
+    let p = game.ballNow(tb);
+    const key = game.toss || (B && B.flight) || null;
+    if (key !== this.shownKey) {
+      this.shownOff = this.shownPos && p && key ? { x: this.shownPos.x - p.x, y: this.shownPos.y - p.y, z: this.shownPos.z - p.z, t0: t } : null;
+      this.shownKey = key;
+    }
+    if (p && this.shownOff) {
+      // slide from where the ball was drawn onto its true path: gently at first, over a fifth of a second
+      const o = this.shownOff, k = 1 - smooth(0, 0.2, t - o.t0);
+      p = { x: p.x + o.x * k, y: Math.max(T.BALL_R, p.y + o.y * k), z: p.z + o.z * k };
+      if (k <= 0) this.shownOff = null;
+    }
+    this.shownPos = p ? { x: p.x, y: p.y, z: p.z } : null;
+    this.shownT = tb;
+    return p;
+  }
+
   _ballAndEffects(game, dt, t) {
-    let b = game.ballNow(t);
+    let b = this._shownBall(game, t, dt);
+    const tb = this.shownT;
     // before the toss, the server holds the ball
     if (!b && (game.state === 'serve') && this.players[game.serverFig()]) {
       const h = this.players[game.serverFig()].f.arms.L.hand.getWorldPosition(new THREE.Vector3());
@@ -440,7 +473,7 @@ export class Tennis3D {
     const B = game.ball;
     if (B && game.state !== 'serve') {
       const g = this.trail.geometry, arr = g.attributes.position.array, col = g.attributes.color.array;
-      const n = Math.max(0, Math.min(B.flight.pts.length - 1, Math.round((t - B.t0) * T.HZ)));
+      const n = Math.max(0, Math.min(B.flight.pts.length - 1, Math.round((tb - B.t0) * T.HZ)));
       let c = 0;
       for (let i = Math.max(0, n - 70); i <= n; i += 2) {
         const p = B.flight.pts[i]; arr[c * 3] = p.x; arr[c * 3 + 1] = p.y; arr[c * 3 + 2] = -p.z;
@@ -450,9 +483,9 @@ export class Tennis3D {
       g.setDrawRange(0, c); g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true;
       this.trail.visible = true;
       // bounce puffs and the hit flash
-      if (this.seenFlight !== B.flight) { this.seenFlight = B.flight; this.seenEvents = 0; this.flash.position.copy(V(B.flight.pts[0].x, B.flight.pts[0].y, B.flight.pts[0].z)); this.flashAt = B.t0; }
+      if (this.seenFlight !== B.flight) { this.seenFlight = B.flight; this.seenEvents = 0; this.flash.position.copy(V(B.flight.pts[0].x, B.flight.pts[0].y, B.flight.pts[0].z)); this.flashAt = Math.max(B.t0, t - 0.04); }
       const ev = B.flight.events;
-      while (this.seenEvents < ev.length && ev[this.seenEvents].i / T.HZ <= t - B.t0) {
+      while (this.seenEvents < ev.length && ev[this.seenEvents].i / T.HZ <= tb - B.t0) {
         const e = ev[this.seenEvents++];
         if (e.type === 'bounce' && !e.roll) { const p = this.puffs[this.puffNext++ % this.puffs.length]; p.m.position.set(e.x, 0.015, -e.z); p.t = t; }
       }
