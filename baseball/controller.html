@@ -13,7 +13,7 @@
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
-    <button class="gear" id="settings">⚙︎ Settings</button>
+    <div class="topbtns"><button class="gear hand" id="hand">✋ Righty</button><button class="gear" id="settings">⚙︎ Settings</button></div>
   </div>
   <div class="state" id="state">Not connected</div>
   <div class="meter"><div id="meter"></div></div>
@@ -30,7 +30,6 @@
     <p>Enter the code on the big screen.</p>
     <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
-    <label><input type="checkbox" id="lefty"> I bat left-handed</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
     <p style="font-size:13px">How to bat: grip the phone like a bat handle, tight. Tap <b>READY</b> when it's your turn, then watch the big screen and just <b>swing</b>. No buttons while you swing. Swing when the ring around the ball closes. Early pulls it, late goes the other way, and a fast swing goes far.</p>
@@ -52,7 +51,7 @@
   const params = new URLSearchParams(location.search);
   $('room').value = (params.get('room') || store.get('ball-room', '')).toUpperCase();
   $('name').value = store.get('name', '');
-  $('lefty').checked = store.get('ball-lefty', '0') === '1';
+  if (store.get('hand', null) === null && store.get('ball-lefty', '0') === '1') store.set('hand', 'L');   // the old Settings checkbox
 
   let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0, lastNote = null, speedText = '';
   const client = new SB.Client({
@@ -65,9 +64,11 @@
     onMessage(m) {
       if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
-      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+      if (m && m.t === 'state' && !kicked) { st = m; hand.sync(m); render(); }
     },
   });
+  // left- or right-handed, switchable any time (the big screen mirrors your player)
+  const hand = SB.handSwitch({ button: $('hand'), client });
 
   // Auto mode: no holding while you swing. Every fast swing on your turn is sent,
   // stamped with the moment of peak bat speed on the big screen's clock.
@@ -78,14 +79,14 @@
     canSwing: () => !!(st && st.yourTurn),
     onArm: () => {
       if (!st || !st.yourTurn || st.pitching) return;   // READY is for between pitches
-      client.send({ t: 'arm', on: true, lefty: $('lefty').checked });
+      client.send({ t: 'arm', on: true });
       armTap = pad.tapMode;   // without motion, this press called for the pitch: letting go isn't a swing
       setState(pad.tapMode ? 'Ready! Tap when the ball reaches you.' : 'Ready! Watch the screen and swing.', true);
     },
     onSwing: r => {
       if (r.tap && armTap) { armTap = false; return; }
       const at = client.synced ? client.hostTime(r.peakT) : null;
-      client.send({ t: 'swing', power: r.power, at, lefty: $('lefty').checked });
+      client.send({ t: 'swing', power: r.power, at });
       speedText = `Bat speed <b>${Math.round(r.power * 100)}%</b>`;
       $('readout').innerHTML = speedText;
     },
@@ -137,7 +138,7 @@
     const room = $('room').value.trim().toUpperCase();
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
-    store.set('ball-room', room); store.set('name', name); store.set('ball-lefty', $('lefty').checked ? '1' : '0');
+    store.set('ball-room', room); store.set('name', name);
     SB.clearUndo($('sheet'));
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {

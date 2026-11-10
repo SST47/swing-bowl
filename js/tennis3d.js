@@ -286,12 +286,13 @@ export class Tennis3D {
     this.playerKey = [];
   }
   _dropPlayer(i) { const old = this.players[i]; if (old) { this.scene.remove(old.f.root); this.scene.remove(old.racket); } this.players[i] = null; }
-  _player(i, color, end) {
+  _player(i, color, end, lefty) {
     this._dropPlayer(i);
     const S = this.scene;
     const f = makeFigure({ shirt: new THREE.Color(color).getHex(), pants: 0xf2f2f2, shoes: 0xf2f2f2, socks: 0xf2f2f2, hatType: 'cap', hat: new THREE.Color(color).getHex(), longSleeves: false });
     f.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     f.root.rotation.y = end === 0 ? Math.PI : 0;
+    if (lefty) f.root.scale.x = -1;   // a left-hander: the right-handed strokes, mirrored
     S.add(f.root);
     const racket = makeRacket(new THREE.Color(color).lerp(new THREE.Color(0x111111), 0.35).getHex()); S.add(racket);
     this.players[i] = { f, racket, phase: 0 };
@@ -350,8 +351,8 @@ export class Tennis3D {
     for (let i = 0; i < figs.length; i++) {
       const F = figs[i], w = game.figWho(i);
       const color = F.idx === null && F.slot === 1 ? '#a7b2c8' : w.color;   // the computer pair: two shades of grey
-      const key = `${figs.length}|${F.end}|${w.name}|${color}`;
-      if (key !== this.playerKey[i] || !this.players[i]) { this.playerKey[i] = key; this._player(i, color, F.end); }
+      const lefty = game.isLefty(i), key = `${figs.length}|${F.end}|${w.name}|${color}|${lefty}`;
+      if (key !== this.playerKey[i] || !this.players[i]) { this.playerKey[i] = key; this._player(i, color, F.end, lefty); }
       this._animate(game, i, dt, t);
     }
     for (let i = figs.length; i < this.players.length; i++) { this._dropPlayer(i); this.playerKey[i] = ''; }

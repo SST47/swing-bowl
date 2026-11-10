@@ -67,6 +67,7 @@
     _endFigs(end) { const r = []; this.figs.forEach((f, i) => { if (f.end === end) r.push(i); }); return r; }
     serverFig() { const ids = this._endFigs(this.score.server); return ids[this.doubles ? this.serveSlot[this.score.server] : 0]; }
     isCpu(fi) { const f = this.figs[fi]; return !f || f.idx === null; }
+    isLefty(fi) { const f = this.figs[fi]; return !!(f && f.idx !== null && this.players[f.idx] && this.players[f.idx].lefty); }
     figWho(fi) { const f = this.figs[fi]; return f && f.idx !== null && this.players[f.idx] ? this.players[f.idx] : CPU; }
     figOf(idx) { return idx === null || idx === undefined ? -1 : this.figs.findIndex(f => f.idx === idx); }
     endOf(idx) { const f = this.figOf(idx); return f < 0 ? -1 : this.figs[f].end; }
@@ -93,6 +94,14 @@
       else if (open) { this.lineup[open[0]][open[1]] = i; this._newMatch(); }
       this._renderBoard(); this._emit();
       return i;
+    }
+    // left- or right-handed: from the switch on the player's phone, any time
+    setHand(i, lefty) {
+      const p = this.players[i];
+      if (!p || !!p.lefty === !!lefty) return;
+      p.lefty = !!lefty;
+      this._flash(`${p.name.toUpperCase()}: ${p.lefty ? 'LEFT' : 'RIGHT'}-HANDED`, 'info');
+      this._emit();
     }
     renamePlayer(i, n) { if (this.players[i] && n) { this.players[i].name = String(n).slice(0, 14); this._renderBoard(); this._emit(); } }
     removePlayer(i) {
@@ -155,7 +164,7 @@
       const sf = this.figs.length ? this.serverFig() : null;
       return {
         state: this.state, over: this.over, started: this.started, mode: this.mode, doubles: this.doubles,
-        players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins })),
+        players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins, lefty: !!q.lefty })),
         lineup: this.lineup.map(a => a.slice()), court: this.court, server: s.server, serverFig: sf,
         games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd,
         cur: X ? this.figs[X.fig].idx : serving && sf !== null ? this.figs[sf].idx : null,
@@ -219,7 +228,7 @@
       const pressure = clamp(0.8 * Math.max(0, far - 0.4) / (REACH - 0.4) + 0.45 * clamp((inKmh - 95) / 70, 0, 1), 0, 1);
       const from = this._ballAt(at) || X.p;
       if (cpu) power = this._cpuPower(pressure, inKmh, X.p);
-      const sh = stroke({ dt, power, from, side: F.side, forehand: X.forehand, pressure,
+      const sh = stroke({ dt, power, from, side: F.side, forehand: X.forehand, lefty: this.isLefty(fi), pressure,
         aimX: cpu ? this._cpuAim(F.end, pressure) : null, lean: this._openX(1 - F.end) });   // good timing finds the open court
       X.done = true;
       this.started = true;
@@ -276,8 +285,8 @@
       this.expect = null;
       if (hp) {
         const ri = this._receiver(to, hp.p), R = this.figs[ri];
-        const right = side === -1 ? 1 : -1, P = R.pos;
-        const fhX = hp.p.x - 0.75 * right, bhX = hp.p.x + 0.75 * right;
+        const right = side === -1 ? 1 : -1, P = R.pos, hand = this.isLefty(ri) ? -1 : 1;   // the racket side
+        const fhX = hp.p.x - 0.75 * right * hand, bhX = hp.p.x + 0.75 * right * hand;
         const forehand = Math.abs(fhX - P.x) <= Math.abs(bhX - P.x) + 0.6;   // forehands are preferred
         this.expect = { end: to, fig: ri, T: at + hp.t, p: hp.p, forehand, i: hp.i };
         // doubles: a ball down the middle makes partners hesitate over who takes it
@@ -431,8 +440,8 @@
         const si = this.serverFig();
         if (this.timer <= 0 && (this.armed || this.idle > (this.isCpu(si) ? 1.4 : 2.4))) {
           // toss it up
-          const S = this.figs[si], right = S.side === -1 ? 1 : -1;
-          const hand = { x: S.pos.x + 0.28 * right, y: T.TOSS.from, z: S.pos.z - S.side * 0.25 };
+          const S = this.figs[si], right = S.side === -1 ? 1 : -1, racket = this.isLefty(si) ? -1 : 1;
+          const hand = { x: S.pos.x + 0.28 * right * racket, y: T.TOSS.from, z: S.pos.z - S.side * 0.25 };   // up in front of the racket shoulder
           this.toss = { hand, t0: t, contactT: tossContactT(hand) };
           S.tossAt = t;
           this.state = 'toss';

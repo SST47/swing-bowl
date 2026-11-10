@@ -245,3 +245,8 @@ kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-bo
 .pad .moderow button.on { background: var(--cyan); border-color: var(--cyan); color: #06222a; }
 .lobby .tmodes { gap: 8px; margin: 8px 0 4px; }
 .lobby .tmodes .btn { padding: 8px 14px; font-size: 14px; }
+
+/* the lefty / righty switch on the phones */
+.pad .topbtns { display: flex; gap: 8px; }
+.gear.hand.on { background: rgba(38, 198, 218, .22); border-color: var(--cyan); color: #fff; }
+.solo .handwrap { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 6; }

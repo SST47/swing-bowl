@@ -132,7 +132,7 @@
 
   /*
    * Turn a judged swing into a shot. dt: swing time minus the ideal moment (s, + = late), power 0..1,
-   * from: contact point, side: hitter's end, forehand: which stroke. pressure 0..1: how hard the
+   * from: contact point, side: hitter's end, forehand: which stroke, lefty: a left-handed hitter. pressure 0..1: how hard the
    * incoming ball was to play (its pace, a stretch to reach it): it sprays the shot and takes pace off.
    * People steer with timing (early pulls, late pushes) and a well-timed ball leans `lean` metres
    * towards the open court; the computer names its spot with aimX instead.
@@ -140,13 +140,13 @@
    */
   const WINDOW = 0.30;
   const gauss = rng => { let u = 0, v = 0; while (!u) u = rng(); while (!v) v = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-  function stroke({ dt, power, from, side, forehand, pressure = 0, aimX = null, lean = 0, rng = Math.random }) {
+  function stroke({ dt, power, from, side, forehand, lefty = false, pressure = 0, aimX = null, lean = 0, rng = Math.random }) {
     const a = Math.abs(dt);
     if (a > WINDOW) return null;
     const q = 1 - (a / WINDOW) ** 2;                         // 1 = perfect
     const to = -side;                                         // the far end from the hitter
     const right = side === -1 ? 1 : -1;                       // +x is the near player's right
-    const pull = (forehand ? -1 : 1) * right;                 // early: a forehand goes to the hitter's left
+    const pull = (forehand ? -1 : 1) * (lefty ? -1 : 1) * right;   // early: a forehand goes to the hitter's left (a lefty's to the right)
     const k = clamp(-dt / 0.2, -1.5, 1.5);
     const press = clamp(pressure, 0, 1), risk = clamp((power - 0.6) / 0.4, 0, 1);
     const wild = (1 - q) * 2.2 + press + risk * 0.5;          // mistimed, stretched or over-hit shots spray

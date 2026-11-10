@@ -33,6 +33,11 @@ console.log('aimed shots land on target and clear the net: ok');
   const good = rate(0), meh = rate(0.15), bad = rate(-0.27);
   console.log('in-court rate: perfect', good.toFixed(2), '| 150 ms late', meh.toFixed(2), '| 270 ms early', bad.toFixed(2));
   assert(good > 0.88 && meh > 0.6 && meh < good && bad < 0.5, 'in-court rates');
+  // a left-hander's early forehand goes the other way
+  const pullX = lefty => { let x = 0; for (let k = 0; k < 200; k++) x += T.stroke({ dt: -0.12, power: 0.6, from, side: -1, forehand: true, lefty, rng }).target.x; return x / 200; };
+  const rx = pullX(false), lx = pullX(true);
+  console.log('early forehand lands at x', rx.toFixed(2), '(righty)', lx.toFixed(2), '(lefty)');
+  assert(rx < -1 && lx > 1, 'lefties pull the other way');
   // a hard ball or a stretch makes it harder to keep in
   const pr = p => { let ins = 0; for (let k = 0; k < 400; k++) { const s = T.stroke({ dt: 0, power: 0.7, from, side: -1, forehand: true, pressure: p, rng }); const b = firstBounce(T.fly(from, s.v, s.spin)); if (b && b.side === 1 && T.inCourt(b.x, b.z, 1)) ins++; } return ins / 400; };
   const calm = pr(0), stretched = pr(1);

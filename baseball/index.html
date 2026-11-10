@@ -81,7 +81,7 @@ import { Ball3D } from '../js/ball3d.js';
     if (e.code === 'KeyN') { room.newGame(); room.hide(); return; }
     if (e.code === 'KeyM') { $('mute').click(); return; }
     if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
-    if (e.code === 'KeyL') { game.lefty = !game.lefty; game._flash(game.lefty ? 'BATTING LEFTY' : 'BATTING RIGHTY', 'info'); return; }
+    if (e.code === 'KeyL') { if (game.players[game.cur]) game.setHand(game.cur, !game.lefty); return; }
     ensure();
     if (e.code === 'Space') { room.hide(); game.input(game.info().cur, { t: 'swing', power: 0.9, at: performance.now() }); }
   });

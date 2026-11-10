@@ -20,7 +20,7 @@
       this.sfx = sfx; this.onUpdate = onUpdate || (() => {});
       this.players = []; this.cur = 0; this.over = false; this.started = false;
       this.state = 'wait'; this.timer = 2.5; this.idle = 0;
-      this.pitch = null; this.hit = null; this.armed = false; this.lefty = false;
+      this.pitch = null; this.hit = null; this.armed = false;
       this.swingAt = -10;       // peak of the batter's last swing (s): the bat meets the ball here
       this.windupStart = 0;     // when the pitcher started the windup (s)
       this.lastBall = null;     // where the last batted ball ended up
@@ -35,6 +35,17 @@
 
     // ---------- players ----------
     canJoinNow() { return !this.started && this.players.length < 6; }
+    // left- or right-handed: from the switch on the player's phone, any time
+    setHand(i, lefty) {
+      const p = this.players[i];
+      if (!p || !!p.lefty === !!lefty) return;
+      p.lefty = !!lefty;
+      this._flash(`${p.name.toUpperCase()}: ${p.lefty ? 'LEFT' : 'RIGHT'}-HANDED`, 'info');
+      this._emit();
+    }
+    // the batter at the plate bats left-handed
+    get lefty() { const p = this.players[this.cur]; return !!(p && p.lefty); }
+    set lefty(v) { const p = this.players[this.cur]; if (p) p.lefty = !!v; }
     addPlayer(name) {
       if (this.players.length >= 6) return -1;
       const i = this.players.length;
@@ -74,7 +85,7 @@
       const p = this.players[this.cur];
       return {
         state: this.state, over: this.over, started: this.started, cur: this.cur,
-        players: this.players.map(q => ({ name: q.name, color: q.color, hrs: q.hrs, longest: Math.round(q.longest) })),
+        players: this.players.map(q => ({ name: q.name, color: q.color, hrs: q.hrs, longest: Math.round(q.longest), lefty: !!q.lefty })),
         swingsLeft: p ? SWINGS - p.swings : SWINGS, hrs: p ? p.hrs : 0,
         pitching: this.state === 'windup' || this.state === 'pitch',
         note: this.note,
@@ -85,10 +96,9 @@
     input(idx, m) {
       if (!this.players[idx]) return false;
       const mine = idx === this.cur && !this.over;
-      if (m.t === 'arm') { if (mine) { this.armed = !!m.on; if (typeof m.lefty === 'boolean') this.lefty = m.lefty; } return true; }
+      if (m.t === 'arm') { if (mine) this.armed = !!m.on; return true; }
       if (m.t === 'swing') {
         if (!mine) return false;
-        if (typeof m.lefty === 'boolean') this.lefty = m.lefty;
         // swing time on the big screen's clock (phones send it already converted)
         const at = m.at ? m.at / 1000 : now() - 0.06;
         this._swing(at, Math.max(0, Math.min(1, +m.power || 0)));

@@ -18,7 +18,7 @@
     /*
      * opts: {
      *   namespace, storageKey,
-     *   game: { addPlayer(name)->idx, renamePlayer(i,name), canJoinNow(), info(), input(idx,msg), newGame() },
+     *   game: { addPlayer(name)->idx, renamePlayer(i,name), canJoinNow(), info(), input(idx,msg), newGame(), setHand?(idx, lefty) },
      *   stateFor(idx, info) -> extra fields for that phone's state message,
      *   onCommand(idx, msg) optional pre-handler (return true if handled)
      *   hideOn: message types that close the lobby (default ['swing'])
@@ -172,6 +172,7 @@
       if (m.t === 'name' && c.idx !== null) { g.renamePlayer(c.idx, m.name); return; }
       if (m.t === 'newgame') { if (g.info().over || !g.info().started) { this.newGame(); this.hide(); } return; }
       if (c.idx === null || c.idx < 0) return;
+      if (m.t === 'hand') { if (g.setHand) g.setHand(c.idx, !!m.lefty); return; }   // the lefty / righty switch on the phone
       if (this.o.onCommand && this.o.onCommand(c.idx, m)) return;
       if (g.input(c.idx, m) && this.hideOn.includes(m.t)) this.hide();
     }

@@ -607,12 +607,15 @@ export class Golf3D {
     if (game.swingAt !== this.lastSwingAt) { this.lastSwingAt = game.swingAt; this.swingAnim = { t0: now, from: this.theta, to: club.putter ? -0.45 : -2.25 }; }
     if (game.state === 'address' && (!this.swingAnim || now - this.swingAnim.t0 > 1200)) {
       this.swingAnim = null;
-      // stand beside this ball, facing it, with the target to the golfer's left
+      // stand beside this ball, facing it, with the target to the golfer's left (a left-hander: the other
+      // side of the ball, mirrored, with the target to their right)
+      const h = p.lefty ? -1 : 1;
       const a = game.aimOf(p.ball), d = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), f = new THREE.Vector3(-d.z, 0, d.x);
       const ballV = this.T(p.ball.x, p.ball.y, 0);
-      G.group.position.copy(ballV).addScaledVector(f, -0.75);
+      G.group.position.copy(ballV).addScaledVector(f, -0.75 * h);
       G.group.position.y = this.hAt(p.ball.x, p.ball.y);
-      G.group.rotation.y = Math.atan2(f.x, f.z);
+      G.group.rotation.y = Math.atan2(f.x * h, f.z * h);
+      G.group.scale.x = h;
       G.shirt.color.set(p.color === '#ffffff' ? '#e8edf5' : p.color);
       const target = game.armed === game.cur ? (club.putter ? 0.42 : 2.3) : 0;
       this.theta += (target - this.theta) * Math.min(1, dt * (target ? 2.2 : 6));
@@ -631,7 +634,8 @@ export class Golf3D {
     const wantPos = new THREE.Vector3(), wantLook = new THREE.Vector3();
     let rate = 3;
     const addressCam = (ball, outPos, outLook) => {
-      const a = game.aimOf(ball), d = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), f = new THREE.Vector3(-d.z, 0, d.x);
+      const h = p && p.lefty ? -1 : 1;   // the golfer's side of the ball
+      const a = game.aimOf(ball), d = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)), f = new THREE.Vector3(-d.z * h, 0, d.x * h);
       const b = this.T(ball.x, ball.y, 0), dist = Math.hypot(hole.pin.x - ball.x, hole.pin.y - ball.y);
       if (putting) {
         // stand on the far side from the golfer so the hole isn't hidden behind them

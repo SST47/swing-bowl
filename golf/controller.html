@@ -13,7 +13,7 @@
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
-    <button class="gear" id="settings">⚙︎ Settings</button>
+    <div class="topbtns"><button class="gear hand" id="hand">✋ Righty</button><button class="gear" id="settings">⚙︎ Settings</button></div>
   </div>
   <div class="state" id="state">Not connected</div>
   <div class="meter"><div id="meter"></div></div>
@@ -36,7 +36,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <label>Swing sensitivity <select id="steer"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
     <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
-    <label><input type="checkbox" id="flipCurve"> Flip curve (lefties)</label>
+    <label><input type="checkbox" id="flipCurve"> Flip curve (if shots bend the wrong way)</label>
     <button class="btn" id="go">Connect &amp; enable motion</button>
     <p class="status" id="sheetStatus"></p>
     <p style="font-size:13px">How to play: grip the phone like a club. Press and <b>hold</b> the big button, take your backswing, and swing through. The hit happens by itself at the fastest point. Swing harder to hit farther. Pull or push your swing to send the ball left or right, and roll your wrist through impact to curve it. For putts, use a short, gentle stroke.</p>
@@ -74,9 +74,11 @@
     onMessage(m) {
       if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
-      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+      if (m && m.t === 'state' && !kicked) { st = m; hand.sync(m); render(); }
     },
   });
+  // left- or right-handed, switchable any time (the big screen mirrors your player)
+  const hand = SB.handSwitch({ button: $('hand'), client });
 
   const GAIN = { low: 0.25, normal: 0.4, high: 0.6 };
   function pathFrom(deg, putter) {

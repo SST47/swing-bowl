@@ -201,5 +201,32 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES });
+  /*
+   * Left- or right-handed: one tap, any time, remembered in every game. The big screen mirrors your
+   * player. (Swings need no flipping: a left-hander's mirrored swing already reads as mirrored.)
+   * button: the switch. client: an SB.Client, or null (one phone, no big screen). onChange(lefty).
+   * Call sync(state) with each state message, so the big screen catches up after joining, a
+   * reconnect or a game switch.
+   */
+  function handSwitch({ button, client, onChange }) {
+    let lefty = store.get('hand', 'R') === 'L', sentAt = 0;
+    const show = () => {
+      button.textContent = lefty ? '🤚 Lefty' : '✋ Righty';
+      button.classList.toggle('on', lefty);
+      button.setAttribute('aria-pressed', String(lefty));
+      button.title = lefty ? 'Playing left-handed: tap for right-handed' : 'Playing right-handed: tap for left-handed';
+    };
+    const send = () => { if (client && client.open) { sentAt = Date.now(); client.send({ t: 'hand', lefty }); } };
+    button.addEventListener('click', () => { lefty = !lefty; store.set('hand', lefty ? 'L' : 'R'); show(); send(); if (onChange) onChange(lefty); });
+    show();
+    return {
+      get lefty() { return lefty; },
+      sync(st) {
+        const me = st && st.players && st.you !== null && st.you !== undefined ? st.players[st.you] : null;
+        if (me && !!me.lefty !== lefty && Date.now() - sentAt > 1500) send();
+      },
+    };
+  }
+
+  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch });
 })(self);

@@ -357,7 +357,11 @@ export class Bowl3D {
       pose = samplePose([{ t: 0, pose: POSE.idle }, { t: 1, pose: POSE.back }], k);
       if (state === 'aim') this._lastAimX = startX;
     }
-    const bx = (throwing ? (this._lastAimX ?? startX) : startX) - 0.215;
+    // the ball hand over the start spot; a left-hander is the right-handed bowler, mirrored
+    const hand = o.lefty ? -1 : 1;
+    this._lefty = !!o.lefty;
+    B.root.scale.x = hand;
+    const bx = (throwing ? (this._lastAimX ?? startX) : startX) - 0.215 * hand;
     B.root.position.set(bx, 0, 1.75 - 1.25 * (slide * slide * (3 - 2 * slide)));
     B.root.visible = state !== 'over';
     applyPose(B, pose);
@@ -418,8 +422,8 @@ export class Bowl3D {
         pos.set(b.x * 0.55, 1.35 - b.z * 0.03 + over * 0.95, z); look.set(b.x * 0.4, 0.12, -(b.z + 8)); rate = 6;
       }
     } else {
-      // Over the bowler's right shoulder and high enough that the bowler never hides the pins.
-      pos.set(startX * 0.6 + 0.3, 2.45, 6.6); look.set(startX * 0.3, 0.15, -18); rate = state === 'throwing' ? 2 : 3;
+      // Over the bowler's ball-side shoulder and high enough that the bowler never hides the pins.
+      pos.set(startX * 0.6 + (this._lefty ? -0.3 : 0.3), 2.45, 6.6); look.set(startX * 0.3, 0.15, -18); rate = state === 'throwing' ? 2 : 3;
     }
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * rate);
     this.snapNext = false;

@@ -12,7 +12,8 @@ function toEuler(R) { // inverse of Rz(a)Rx(b)Ry(c), degrees
   return { alpha: Math.atan2(-R[0][1], R[1][1]) / D, beta: b / D, gamma: Math.atan2(-R[2][0], R[2][2]) / D };
 }
 // simulate: facing `heading` deg; backswing straight; forward swing pulled by `pull` deg (CCW +); optional wrist twist at release
-function simulate({ heading = 0, pull = 0, twist = 0, grip = 0 }) {
+const MIR = [[-1, 0, 0], [0, 1, 0], [0, 0, 1]];   // a mirror through a vertical plane
+function simulate({ heading = 0, pull = 0, twist = 0, grip = 0, mirror = false }) {
   const hz = 60, dt = 1 / hz;
   const zAxis = [0, 0, 1];
   const rot = (v, deg) => { const R = axisAngle(zAxis, deg * D); return [0, 1, 2].map(i => R[i][0] * v[0] + R[i][1] * v[1] + R[i][2] * v[2]); };
@@ -20,7 +21,8 @@ function simulate({ heading = 0, pull = 0, twist = 0, grip = 0 }) {
   // phone hanging down in the hand: device y points to the ground, rotated by heading and some grip roll
   let R = mul(axisAngle(zAxis, heading * D), mul(axisAngle([1, 0, 0], -90 * D), axisAngle([0, 1, 0], grip * D)));
   const ev = []; let t = 0;
-  const push = () => { ev.push({ t: t * 1000, ...toEuler(R) }); };
+  // mirror: a left-hander making the mirror image of the swing, phone held the mirrored way
+  const push = () => { ev.push({ t: t * 1000, ...toEuler(mirror ? mul(MIR, mul(R, MIR)) : R) }); };
   push();
   const phase = (axis, totalDeg, secs, twistDeg = 0) => {
     const n = Math.round(secs * hz);
@@ -56,6 +58,12 @@ for (const c of cases) {
   console.log(JSON.stringify(c).padEnd(42), '->', r.ok ? r.deg.toFixed(1) + '°' : r.why);
   assert(r.ok, 'direction should be measurable');
   assert(Math.abs(r.deg - c.pull) < 4, `expected ~${c.pull}, got ${r.deg}`);
+}
+// a left-hander's mirror-image swing reads as the mirror-image direction, so nothing needs flipping for lefties
+for (const c of [{ pull: 15 }, { pull: -12, heading: 70 }, { pull: 20, twist: 60, heading: -40 }]) {
+  const r = run(Object.assign({ mirror: true }, c));
+  console.log(('lefty ' + JSON.stringify(c)).padEnd(42), '->', r.ok ? r.deg.toFixed(1) + '°' : r.why);
+  assert(r.ok && Math.abs(r.deg + c.pull) < 4, `lefty: expected ~${-c.pull}, got ${r.deg}`);
 }
 // steering map: left pull -> negative x aim; dead zone; clamps
 assert.strictEqual(M.steerFromDeg(1, 'normal'), 0);

@@ -25,6 +25,14 @@
 
     // ---------- players & state ----------
     canJoinNow() { return !this.started && this.players.length < 6; }
+    // left- or right-handed: from the switch on the player's phone, any time
+    setHand(i, lefty) {
+      const p = this.players[i];
+      if (!p || !!p.lefty === !!lefty) return;
+      p.lefty = !!lefty;
+      this._flash(`${p.name.toUpperCase()}: ${p.lefty ? 'LEFT' : 'RIGHT'}-HANDED`, 'info');
+      this._emit();
+    }
     addPlayer(name) {
       if (this.players.length >= 6) return -1;
       const i = this.players.length;
@@ -94,7 +102,7 @@
       return {
         state: this.state, over: this.over, started: this.started, cur: this.cur,
         hole: this.hi + 1, holes: HOLES.length, par: this.hole.par,
-        players: this.players.map(q => ({ name: q.name, color: q.color, toPar: this._toPar(q) })),
+        players: this.players.map(q => ({ name: q.name, color: q.color, toPar: this._toPar(q), lefty: !!q.lefty })),
         dist: p ? Math.round(this._dist(p.ball)) : 0, lie: p ? p.lie : 'tee',
         club: p ? CLUBS[p.club].name : '', clubIdx: p ? p.club : 0, putter: p ? !!CLUBS[p.club].putter : false,
         stroke: p ? p.strokes + 1 : 1,

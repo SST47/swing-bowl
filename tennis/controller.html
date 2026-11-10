@@ -13,7 +13,7 @@
 <div class="pad">
   <div class="top">
     <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
-    <button class="gear" id="settings">⚙︎ Settings</button>
+    <div class="topbtns"><button class="gear hand" id="hand">✋ Righty</button><button class="gear" id="settings">⚙︎ Settings</button></div>
   </div>
   <div class="moderow" id="modeRow" hidden><button data-mode="h2h">🆚 Play each other</button><button data-mode="team">🤝 Team up vs CPU</button></div>
   <div class="state" id="state">Not connected</div>
@@ -61,9 +61,11 @@
     onMessage(m) {
       if (m && m.t === 'switch') { SB.followSwitch(m); return; }   // the big screen changed games: follow it
       if (m && m.t === 'kicked') { onKicked(); return; }
-      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+      if (m && m.t === 'state' && !kicked) { st = m; hand.sync(m); render(); }
     },
   });
+  // left- or right-handed, switchable any time (the big screen mirrors your player)
+  const hand = SB.handSwitch({ button: $('hand'), client });
   // No buttons while you swing: every fast swing is sent, stamped with the moment of peak racket
   // speed on the big screen's clock. The big screen works out whether it was your ball.
   let tossTap = false;

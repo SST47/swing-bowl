@@ -41,6 +41,14 @@
       return i;
     }
 
+    // left- or right-handed: from the switch on the player's phone, any time
+    setHand(i, lefty) {
+      const p = this.match.players[i];
+      if (!p || !!p.lefty === !!lefty) return;
+      p.lefty = !!lefty;
+      this._flash(`${p.name.toUpperCase()}: ${p.lefty ? 'LEFT' : 'RIGHT'}-HANDED`, 'info');
+      this._emit();
+    }
     renamePlayer(i, name) {
       const p = this.match.players[i];
       if (!p || !name) return;
@@ -87,7 +95,7 @@
       return {
         state: this.state, over: m.over, cur: m.cur, frame: m.frame + 1,
         ball: m.players.length ? m.ballInFrame() + 1 : 1, started: m.started,
-        players: m.players.map(p => ({ name: p.name, color: p.color, total: scoreCard(p.frames).total })),
+        players: m.players.map(p => ({ name: p.name, color: p.color, total: scoreCard(p.frames).total, lefty: !!p.lefty })),
       };
     }
 
@@ -159,7 +167,7 @@
         aim: aiming ? { x: p.startX, aim: 0, color: p.color + '88' } : null,   // straight-line guide from the start position
         // extra detail for the 3D view
         state: this.state, holding: this.holding !== null, throwAt: this.throwAt, celebrate: this.celebrate,
-        startX: p ? p.startX : 0, color: p ? p.color : COLORS[0], dt,
+        startX: p ? p.startX : 0, color: p ? p.color : COLORS[0], lefty: !!(p && p.lefty), dt,
       });
       if (this.state === 'rolling') this._renderPins();
     }

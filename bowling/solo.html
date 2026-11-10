@@ -17,6 +17,7 @@
   <div id="hud"></div>
 </div>
 <div class="soloinfo" id="info"></div>
+<div class="handwrap"><button class="gear hand" id="hand">✋ Righty</button></div>
 <div class="controls" id="controls">
   <div class="grp"><small>Move</small><div class="row"><button id="left">◀</button></div></div>
   <div><button class="hold" id="hold"><span class="lbl">HOLD &amp; SWING</span><small>let go to throw</small></button><div class="meter" style="margin-top:8px;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden"><div id="meter" style="height:100%;width:0;background:linear-gradient(90deg,#3ddc97,#ffd23f,#ff3d7f)"></div></div></div>
@@ -31,7 +32,7 @@
     <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
     <label>Swing sensitivity <select id="steer"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
     <label><input type="checkbox" id="flipSteer"> Flip left/right</label>
-    <label><input type="checkbox" id="flip"> Flip spin direction (lefties)</label>
+    <label><input type="checkbox" id="flip"> Flip spin direction (if hooks bend the wrong way)</label>
     <button class="btn" id="go">Start &amp; enable motion</button>
     <p style="font-size:13px">Want a big screen and friends? Open the <b>Swing Bowl big screen</b> on a laptop or TV and join with each phone.</p>
   </div>
@@ -63,6 +64,8 @@ import { Bowl3D } from '../js/bowl3d.js';
 
   let info = null, hintTimer = 0;
   const app = new SB.GameApp({ canvas: $('c'), renderer: make3D(), hud: $('hud'), sfx, onUpdate: i => { info = i; render(); } });
+  // left- or right-handed, any time: the bowler on screen is mirrored
+  const hand = SB.handSwitch({ button: $('hand'), client: null, onChange: l => app.info().players.forEach((p, i) => app.setHand(i, l)) });
 
   window.__bowl = app;   // handy for debugging from the console
   const pad = SB.makeSwingPad({
@@ -104,7 +107,7 @@ import { Bowl3D } from '../js/bowl3d.js';
     SB.clearUndo($('sheet'));   // no "Undo Typing" pop-up when the phone gets swung
     await pad.enable();
     SB.keepAwake();
-    if (!app.info().players.length) app.addPlayer(name);
+    if (!app.info().players.length) { app.addPlayer(name); app.setHand(0, hand.lefty); }
     $('sheet').hidden = true;
   };
 }
