@@ -13,6 +13,7 @@
     { id: 'baseball', icon: '⚾', name: 'Home Run Derby', sub: 'Swing at the pitch' },
     { id: 'tennis', icon: '🎾', name: 'Tennis', sub: 'Two players, or vs the computer' },
   ];
+  const HUB = { id: 'hub', icon: '🏟️', name: 'All games', sub: 'Back to the menu' };
 
   class Room {
     /*
@@ -34,7 +35,6 @@
       this.kicked = new Set();   // controller ids removed by the host; they only come back via "Join again"
       this.hideOn = opts.hideOn || ['swing'];
       this.host = new root.SB.Host({
-        namespace: opts.namespace,
         onStatus: (k, t) => this._status(k, t),
         onJoin: id => { this.conns.set(id, { cid: null, idx: null }); this.host.send(id, { t: 'who' }); },
         onLeave: id => { this.conns.delete(id); this.renderLobby(); },
@@ -43,7 +43,7 @@
     }
 
     start() {
-      let pref = null; try { pref = sessionStorage.getItem(this.o.storageKey); } catch (e) {}
+      let pref = null; try { pref = sessionStorage.getItem('sb-room'); } catch (e) {}   // one code for the whole visit, whatever the game
       // coming from another game: same room code, same players (their phones are on their way)
       const handoff = this._handoff();
       if (handoff) pref = handoff.room;
@@ -67,7 +67,7 @@
         const [kind, key] = b.dataset.kick.split(':');
         if (kind === 'p') this.kick(+key); else this.kickQueued(key);
       });
-      this._switcher();
+      if (!this.o.noSwitcher) this._switcher();
       this.renderLobby();
       if (handoff) this.hide();
     }
@@ -93,8 +93,8 @@
       if (!id) return;
       const ov = document.createElement('div');
       ov.className = 'switcher'; ov.hidden = true;
-      ov.innerHTML = `<div class="card"><h2>Switch game</h2><p>Everyone's phone comes along, with the same room code. This game ends here.</p>
-        <div class="games">${GAMES.map(g => `<button type="button" data-game="${g.id}" class="${g.id === id ? 'now' : ''}"><span>${g.icon}</span>${g.name}<small>${g.id === id ? 'playing now' : g.sub}</small></button>`).join('')}</div>
+      ov.innerHTML = `<div class="card"><h2>Switch game</h2><p>Everyone's phone comes along: the room code stays the same in every game. This game ends here.</p>
+        <div class="games">${GAMES.concat(HUB).map(g => `<button type="button" data-game="${g.id}" class="${g.id === id ? 'now' : ''}"><span>${g.icon}</span>${g.name}<small>${g.id === id ? 'playing now' : g.sub}</small></button>`).join('')}</div>
         <button type="button" class="btn ghost" data-close>Keep playing</button></div>`;
       ov.addEventListener('click', e => {
         const b = e.target.closest('button');
@@ -124,9 +124,9 @@
       const players = info.players.map((p, i) => ({ name: p.name, cid: owner(i) })).concat(this.queue.map(q => ({ name: q.name, cid: q.cid })));
       try { sessionStorage.setItem('sb-handoff', JSON.stringify({ to: id, room: code, players, at: Date.now() })); } catch (e) {}
       const msg = { t: 'switch', game: id, room: code };
-      if (code) { this.host.broadcast(() => msg); setTimeout(() => this.host.broadcast(() => msg), 250); }
+      if (code) { this.host.shout(msg); setTimeout(() => this.host.shout(msg), 250); }
       if (this.switcherEl) this.switcherEl.querySelector('p').textContent = 'Switching… phones are following along.';
-      setTimeout(() => { location.href = new URL(`../${id}/`, location.href).href; }, code ? 600 : 0);
+      setTimeout(() => { location.href = new URL(`${this.o.root || '../'}${id === 'hub' ? '' : id + '/'}`, location.href).href; }, code ? 600 : 0);
     }
 
     hide() { $('lobby').hidden = true; }
@@ -136,9 +136,12 @@
       const st = $('status');
       st.classList.toggle('err', kind === 'error' || kind === 'offline');
       if (kind === 'open') {
-        try { sessionStorage.setItem(this.o.storageKey, text); } catch (e) {}
+        try { sessionStorage.setItem('sb-room', text); } catch (e) {}
+        // phones still on another game's controller (the big screen came here some other way): bring them along
+        const here = { t: 'switch', game: this.o.gameId, room: text };
+        if (this.o.gameId) [0, 1200, 3500].forEach(ms => setTimeout(() => this.host.shout(here), ms));
         $('code').textContent = text; $('cornerCode').textContent = text;
-        const url = new URL('controller.html', location.href); url.search = '?room=' + text; url.hash = '';
+        const url = new URL(this.o.joinPage || 'controller.html', location.href); url.search = '?room=' + text; url.hash = '';
         $('joinurl').textContent = url.href;
         const el = $('qr'); el.innerHTML = '';
         if (typeof root.QRCode === 'function') new root.QRCode(el, { text: url.href, width: 220, height: 220, correctLevel: root.QRCode.CorrectLevel.M });
@@ -152,6 +155,8 @@
       const c = this.conns.get(id); if (!c || !m) return;
       const g = this.o.game;
       if (m.t === 'hello') {
+        // a phone on another game's controller, with the right room code: send it here
+        if (m.g && this.o.gameId && m.g !== this.o.gameId) { this.host.send(id, { t: 'switch', game: this.o.gameId, room: this.host.code }); return; }
         const name = String(m.name || '').trim().slice(0, 14);
         c.cid = String(m.id || id);
         if (this.kicked.has(c.cid)) {
@@ -172,6 +177,7 @@
       if (m.t === 'name' && c.idx !== null) { g.renamePlayer(c.idx, m.name); return; }
       if (m.t === 'newgame') { if (g.info().over || !g.info().started) { this.newGame(); this.hide(); } return; }
       if (c.idx === null || c.idx < 0) return;
+      if (m.t === 'live') { g.live = { idx: c.idx, x: Math.max(-1, Math.min(1, +m.x || 0)), y: Math.max(-1, Math.min(1, +m.y || 0)), at: performance.now() }; return; }   // the phone's tilt, live: the player on screen follows it
       if (m.t === 'hand') { if (g.setHand) g.setHand(c.idx, !!m.lefty); return; }   // the lefty / righty switch on the phone
       if (this.o.onCommand && this.o.onCommand(c.idx, m)) return;
       if (g.input(c.idx, m) && this.hideOn.includes(m.t)) this.hide();

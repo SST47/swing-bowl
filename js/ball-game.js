@@ -27,6 +27,9 @@
       this.lastOutcome = null;  // { type, at, dist }
       this.bias = 0;            // learned average lateness of swings in this room (s)
       this.note = null;         // { text, at } what happened to the last swing, shown on the batter's phone
+      this.pick = {};           // per player: the pitch they've chosen to throw next ('FB', 'CH', 'CB', 'SL')
+      this.thrown = null;       // a pitch thrown from a phone, waiting for the windup: { id, power }
+      this.live = null;         // the batter's phone, live: { idx, x, y, at } (the bat follows it)
       this.WINDUP = WINDUP;
       this._buildHud(hud);
       this.last = performance.now();
@@ -46,10 +49,12 @@
     // the batter at the plate bats left-handed
     get lefty() { const p = this.players[this.cur]; return !!(p && p.lefty); }
     set lefty(v) { const p = this.players[this.cur]; if (p) p.lefty = !!v; }
+    // With two or more players, the next batter in line pitches from their phone (or the computer does, if they don't).
+    get pitcher() { return this.players.length > 1 && !this.over ? (this.cur + 1) % this.players.length : null; }
     addPlayer(name) {
       if (this.players.length >= 6) return -1;
       const i = this.players.length;
-      this.players.push({ name: name || 'Player ' + (i + 1), color: COLORS[i % COLORS.length], swings: 0, hrs: 0, longest: 0 });
+      this.players.push({ name: name || 'Player ' + (i + 1), color: COLORS[i % COLORS.length], swings: 0, hrs: 0, longest: 0, ks: 0 });
       this._renderBoard(); this._emit();
       return i;
     }
@@ -63,7 +68,7 @@
       if (!this.players.length) { this.cur = 0; this.newGame(); return; }
       if (i < this.cur) this.cur--;
       else if (wasCur && !this.over) {
-        this.pitch = null; this.hit = null; this.armed = false; this.lastBall = null;
+        this.pitch = null; this.hit = null; this.armed = false; this.lastBall = null; this.thrown = null;
         if (this.cur >= this.players.length) {
           this.cur = this.players.length - 1;
           this._finishDerby();
@@ -76,7 +81,8 @@
     }
 
     newGame() {
-      for (const p of this.players) { p.swings = 0; p.hrs = 0; p.longest = 0; }
+      for (const p of this.players) { p.swings = 0; p.hrs = 0; p.longest = 0; p.ks = 0; p.lazy = false; }
+      this.thrown = null;
       this.cur = 0; this.over = false; this.started = false; this.state = 'wait'; this.timer = 2; this.pitch = null; this.hit = null; this.lastBall = null;
       this._flash('PLAY BALL!', 'info'); this._renderBoard(); this._emit();
     }
@@ -85,7 +91,8 @@
       const p = this.players[this.cur];
       return {
         state: this.state, over: this.over, started: this.started, cur: this.cur,
-        players: this.players.map(q => ({ name: q.name, color: q.color, hrs: q.hrs, longest: Math.round(q.longest), lefty: !!q.lefty })),
+        players: this.players.map(q => ({ name: q.name, color: q.color, hrs: q.hrs, longest: Math.round(q.longest), ks: q.ks, lefty: !!q.lefty })),
+        pitcher: this.pitcher, picks: this.pick, canThrow: this.state === 'wait' && !this.thrown,
         swingsLeft: p ? SWINGS - p.swings : SWINGS, hrs: p ? p.hrs : 0,
         pitching: this.state === 'windup' || this.state === 'pitch',
         note: this.note,
@@ -96,6 +103,19 @@
     input(idx, m) {
       if (!this.players[idx]) return false;
       const mine = idx === this.cur && !this.over;
+      // the pitcher: choose a pitch, then throw it (a swing of the phone)
+      if (idx === this.pitcher) {
+        if (m.t === 'pick') { if (B.PITCHES.some(p => p.id === m.id)) { this.pick[idx] = m.id; this._emit(); } return true; }
+        if (m.t === 'swing') {
+          if (this.state !== 'wait' || this.thrown) return false;
+          this.thrown = { id: this.pick[idx] || 'FB', power: Math.max(0, Math.min(1, +m.power || 0)) };
+          this.players[idx].lazy = false;
+          if (this.sfx) this.sfx.unlock();
+          this._emit();
+          return true;
+        }
+        return false;
+      }
       if (m.t === 'arm') { if (mine) this.armed = !!m.on; return true; }
       if (m.t === 'swing') {
         if (!mine) return false;
@@ -142,6 +162,7 @@
       this.lastTiming = dt;
       const ms = Math.round(dt * 1000), how = Math.abs(ms) < 40 ? 'perfect timing' : ms < 0 ? `early by ${-ms} ms` : `late by ${ms} ms`;
       if (c.kind === 'miss') {
+        this._strikeout();
         this._note(`Missed: ${how}`);
         this._result(dt < 0 ? 'SWING AND A MISS · EARLY' : 'SWING AND A MISS · LATE', 'info', 1.3);
         return;
@@ -156,6 +177,8 @@
       this._renderTop(); this._emit();
     }
 
+    // a swing and a miss, or a strike looking: one for whoever threw it
+    _strikeout() { const P = this.pitch && this.pitch.by !== null ? this.players[this.pitch.by] : null; if (P) P.ks++; }
     _result(text, kind, secs) {
       this._flash(text, kind);
       this.state = 'result'; this.timer = secs;
@@ -219,12 +242,20 @@
       if (this.players.length && !this.over) {
         if (this.state === 'wait') {
           this.timer -= dt; this.idle += dt;
-          if (this.timer <= 0 && (this.armed || this.idle > 3.2)) { this.state = 'windup'; this.timer = WINDUP; this.windupStart = t; this._emit(); }
+          // the pitch: thrown from the pitcher's phone; or by the computer once the batter's ready (straight away
+          // with nobody pitching, after a wait if the pitcher doesn't throw)
+          const pi = this.pitcher, P = pi !== null ? this.players[pi] : null, slow = P && !P.lazy;
+          const auto = slow ? this.idle > (this.armed ? 5 : 9) : this.armed || this.idle > 3.2;
+          if (this.timer <= 0 && (this.thrown || auto)) {
+            if (!this.thrown && P) P.lazy = true;   // (they didn't throw: don't keep everyone waiting next time)
+            this.state = 'windup'; this.timer = WINDUP; this.windupStart = t; this._emit();
+          }
         } else if (this.state === 'windup') {
           this.timer -= dt;
           if (this.timer <= 0) {
-            const p = makePitch();
-            this.pitch = { p, releaseT: t, plateT: t + p.dur, judged: false };
+            const th = this.thrown; this.thrown = null;
+            const p = th ? makePitch(null, th) : makePitch();
+            this.pitch = { p, releaseT: t, plateT: t + p.dur, judged: false, by: th ? this.pitcher : null };
             this.state = 'pitch';
             this._renderTop(); this._emit();
           }
@@ -236,6 +267,7 @@
           else if (!pt.judged && t > pt.plateT + GRACE) {
             if (this.pitch.expiring) {
               this.pitch.judged = true;
+              if (this.pitch.p.inZone) this._strikeout();
               this._note('No swing reached the screen for that pitch');
               this._result(this.pitch.p.inZone ? 'STRIKE' : 'BALL', 'info', 0.9);
             } else this.pitch.expiring = true;
@@ -270,12 +302,18 @@
         s += `<div class="tbar"><i style="left:${pos}%"></i></div><small>${Math.abs(ms) < 40 ? 'perfect!' : ms < 0 ? 'early ' + -ms + ' ms' : 'late ' + ms + ' ms'}</small>`;
       }
       this.el.pitch.innerHTML = s;
-      this.el.turn.innerHTML = this.over ? 'Derby over' : p ? (this.state === 'wait' && !this.armed ? 'Tap READY on your phone, then swing it like a bat' : this.state === 'windup' ? 'Here comes the pitch…' : '') : '';
+      this.el.turn.innerHTML = this.over ? 'Derby over' : p ? (this.state === 'wait' ? this._waitText() : this.state === 'windup' ? 'Here comes the pitch…' : '') : '';
+    }
+    _waitText() {
+      const pi = this.pitcher, P = pi !== null ? this.players[pi] : null;
+      if (P && !P.lazy && !this.thrown) return `<b style="color:${P.color}">${esc(P.name)}</b> pitches: pick a pitch and throw it!`;
+      return this.armed || this.thrown ? 'Get ready…' : 'Tap READY on your phone, then swing it like a bat';
     }
     _renderBoard() {
       if (!this.players.length) { this.el.board.innerHTML = ''; return; }
-      let h = '<table><thead><tr><th></th><th>HR</th><th>Longest</th><th>Swings</th></tr></thead><tbody>';
-      this.players.forEach((p, i) => { h += `<tr class="${i === this.cur && !this.over ? 'active' : ''}"><td class="name"><i style="background:${p.color}"></i>${esc(p.name)}</td><td class="total">${p.hrs}</td><td>${p.longest ? Math.round(p.longest) + ' m' : '–'}</td><td>${p.swings}/${SWINGS}</td></tr>`; });
+      const duel = this.players.length > 1;
+      let h = `<table><thead><tr><th></th><th>HR</th><th>Longest</th><th>Swings</th>${duel ? '<th title="Strikes thrown as the pitcher">K</th>' : ''}</tr></thead><tbody>`;
+      this.players.forEach((p, i) => { h += `<tr class="${i === this.cur && !this.over ? 'active' : ''}"><td class="name"><i style="background:${p.color}"></i>${esc(p.name)}</td><td class="total">${p.hrs}</td><td>${p.longest ? Math.round(p.longest) + ' m' : '–'}</td><td>${p.swings}/${SWINGS}</td>${duel ? `<td>${p.ks}</td>` : ''}</tr>`; });
       this.el.board.innerHTML = h + '</tbody></table>';
     }
     _flash(text, kind, sticky) {

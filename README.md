@@ -1,6 +1,6 @@
 # Swing Sports
 
-Wii-style motion sports in the browser. A laptop or TV shows the game, and every player's **phone is the controller**: scan the QR code, then swing. Nothing to install.
+Wii-style motion sports in the browser. A laptop or TV shows the game, and every player's **phone is the controller**: open the site on the TV, scan the QR code once, and you're in the room for every game. Nothing to install.
 
 **Play:** https://sst47.github.io/swing-sports/
 
@@ -8,10 +8,10 @@ Wii-style motion sports in the browser. A laptop or TV shows the game, and every
 | --- | --- | --- |
 | 🎳 **Swing Bowl** | [`bowling/`](bowling/) | A 3D bowling alley. Hold the button, swing, let go. Swing speed sets ball speed, the swing path sets the direction, a wrist twist adds hook. |
 | ⛳ **Swing Golf** | [`golf/`](golf/) | A 3D course (three.js). Pick a club, take it back, swing through: speed sets distance, path pushes or pulls the ball, wrist roll draws or fades it. Putts use a soft stroke. |
-| ⚾ **Home Run Derby** | [`baseball/`](baseball/) | A 3D ballpark. No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. After every pitch the phone says what happened (hit, foul or miss, and how early or late). |
-| 🎾 **Swing Tennis** | [`tennis/`](tennis/) | A 3D stadium court. Play each other (one on their own plays the computer; the winner stays on when others are waiting), or team up for doubles against a computer pair. Switch between the two from any phone or the big screen (**T**). Head to head, the camera changes ends every game so each player gets the view from behind themselves (**V** moves it any time). To serve, tilt your phone up to toss the ball, then swing. Your player runs to the ball and you swing (or switch your phone to **Tilt to run** and steer them yourself, tipping the phone left or right between shots): timing aims it (early pulls cross-court, late pushes it the other way), swing speed sets pace, a gentle swing lobs. First to 2 games. |
+| ⚾ **Home Run Derby** | [`baseball/`](baseball/) | A 3D ballpark. No buttons while you swing. Swing when the ring closes on the pitch: early pulls, late goes the other way, bat speed sets distance. After every pitch the phone says what happened (hit, foul or miss, and how early or late). Before the pitch the bat on screen follows your phone, and a home run gets a bat flip. With two or more players, the next batter in line **pitches from their phone**: pick fastball, changeup, curve or slider and throw it with a swing (the computer pitches if they don't). Strikes thrown are counted. |
+| 🎾 **Swing Tennis** | [`tennis/`](tennis/) | A 3D stadium court. Play each other (one on their own plays the computer; the winner stays on when others are waiting), or team up for doubles against a computer pair. Switch between the two from any phone or the big screen (**T**). Head to head with two people, the screen splits so each player sees the court from behind themselves (**S** turns the split off; then the camera changes ends every game, and **V** moves it any time). To serve, tilt your phone up to toss the ball, then swing. Your player runs to the ball and you swing (or switch your phone to **Tilt to run** and steer them yourself, tipping the phone left or right between shots): timing aims it (early pulls cross-court, late pushes it the other way), swing speed sets pace, a gentle swing lobs. Serves to a person come in slower, with a wider timing window and more reach on the return, so serves can be returned. First to 2 games. |
 
-Up to 6 players per game. **Switch game** (on the big screen, or press **G**) moves everyone to another game mid-match: the room code and players stay the same, and every phone follows along with one tap. The big screen can also be played with the keyboard for testing, and bowling has a [one-phone solo mode](bowling/solo.html).
+Up to 6 players per game. **One room code for everything:** the menu page is the room, phones join there once and can pick a game from the phone. **Switch game** (on the big screen, or press **G**) moves everyone to another game or back to the menu mid-match: the room code and players stay the same, and every phone follows along with one tap. Even if the big screen opens a game some other way, phones in the room are sent to it. The big screen can also be played with the keyboard for testing, and bowling has a [one-phone solo mode](bowling/solo.html).
 
 ## How it works
 
@@ -27,6 +27,9 @@ What gets measured:
 - **Power:** peak rotation speed. It doesn't depend on orientation, so any grip works.
 - **Spin / curve:** wrist twist around the phone's long axis near the peak.
 - **Direction:** the forward swing's plane compared with the backswing's, in world coordinates from the orientation stream. Wrist twist is removed first, so a hook doesn't change direction.
+- **Live tilt:** while you get ready (holding the button in bowling and golf, waiting for the pitch in baseball), the phone streams how it's held about 10 times a second, so the bowler's arm, the golfer's backswing and the batter's bat move with you on screen.
+
+Swings are sent as soon as they're clearly past their fastest point, not when they've died away, so the screen reacts quicker.
 
 iOS only exposes motion sensors over HTTPS and after a tap (`DeviceMotionEvent.requestPermission()`); GitHub Pages provides the HTTPS. After you type a name, the pages clear the input history, so swinging can't trigger iOS "Shake to Undo". If there are no sensors (or motion access was denied), the controller falls back to taps: "hold to charge, release" for bowling and golf, and in baseball and tennis one tap calls for the pitch or tosses the serve and the next tap is the swing.
 
@@ -38,7 +41,7 @@ For baseball and tennis, the phone and screen keep their clocks in sync with rou
 
 The host can remove players (✕ on a player in **Players / QR**). A removed phone can only come back by tapping "Join again".
 
-**Switching games** (`js/room.js`, `js/pad.js`): the big screen tells every phone `{ t: 'switch', game, room }`, saves the roster (names and phone ids, in order) for the next page, and opens the new game with the same room code. Each phone opens that game's controller and rejoins straight into its old slot after one tap (phones need a tap before they share motion data).
+**One room, every game** (`js/room.js`, `js/pad.js`, `join.html`): every page uses the same topics and the room code is kept for the whole visit. Phones say which game's controller they are on; a screen showing a different game sends them on, and it also tells every phone in the room where it is when it opens. `join.html` is the phone's page in the menu room. **Switching games:** the big screen tells every phone `{ t: 'switch', game, room }`, saves the roster (names and phone ids, in order) for the next page, and opens the new game with the same room code. Each phone opens that game's controller and rejoins straight into its old slot after one tap (phones need a tap before they share motion data).
 
 Public brokers are shared and unauthenticated. That's fine for game moves, but don't send anything private this way.
 

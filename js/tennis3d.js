@@ -166,8 +166,12 @@ export class Tennis3D {
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 6000);
-    this.camPos = new THREE.Vector3(0, 6.6, 26); this.camLook = new THREE.Vector3(0, 0.2, -2.5);
-    this.snapNext = true;
+    this.rigs = [0, 1].map(() => ({ pos: new THREE.Vector3(0, 6.6, 26), look: new THREE.Vector3(0, 0.2, -2.5), ang: undefined, snap: true }));
+    this.camPos = this.rigs[0].pos;
+    // split screen: a divider and a name over each half
+    this.splitEl = document.createElement('div'); this.splitEl.className = 'tsplit'; this.splitEl.hidden = true;
+    this.splitEl.innerHTML = '<i></i><b class="l"></b><b class="r"></b>';
+    container.appendChild(this.splitEl);
     this.uTime = { value: 0 }; this.uCheer = { value: 0 };
     this._sky(); this._court(); this._stadium(); this._people(); this._dynamic();
     window.addEventListener('resize', () => this.resize());
@@ -177,9 +181,14 @@ export class Tennis3D {
   resize() {
     const w = this.container.clientWidth || window.innerWidth, h = this.container.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    // keep the whole court in shot on narrow screens
-    this.camera.fov = w / h < 1.5 ? 40 * Math.min(1.5, 1.6 / (w / h)) : 40;
+    this.size = { w, h };
+    this._lens(w / h);
+  }
+  // keep the whole court in shot in a narrow picture
+  _lens(aspect, split) {
+    if (aspect === this.aspect) return;
+    this.aspect = aspect; this.camera.aspect = aspect;
+    this.camera.fov = split ? Math.max(40, Math.min(62, 44 / aspect)) : aspect < 1.5 ? 40 * Math.min(1.5, 1.6 / aspect) : 40;
     this.camera.updateProjectionMatrix();
   }
 
@@ -382,9 +391,30 @@ export class Tennis3D {
     this.uCheer.value += (cheer - this.uCheer.value) * Math.min(1, dt * 4);
     if (lp && lp.res === 'match' && lp !== this.lastMatchSeen) { this.lastMatchSeen = lp; const P = this._endMid(game, lp.end); this.confetti.burst(V(P.x, 2.2, P.z), 260, 4.5, 2); }
     this.confetti.update(dt);
-    this._camera(game, dt, t);
     this._autoRes();
-    this.renderer.render(S, this.camera);
+    const R = this.renderer, split = !!game.split, { w, h } = this.size;
+    if (split !== this.wasSplit) { this.wasSplit = split; this.rigs.forEach(r => { r.snap = true; }); this.splitEl.hidden = !split; }
+    if (!split) {
+      this._lens(w / h);
+      R.setScissorTest(false); R.setViewport(0, 0, w, h);
+      this._camera(game, dt, t, this.rigs[0], game.camEnd);
+      R.render(S, this.camera);
+      return;
+    }
+    // half the screen each: the near-end player on the left, the far-end player on the right
+    const names = [game.who(0), game.who(1)], key = names.map(p => p.name + p.color).join('|');
+    if (key !== this.splitKey) {
+      this.splitKey = key;
+      this.splitEl.querySelectorAll('b').forEach((el, i) => { el.textContent = names[i].name; el.style.background = names[i].color; });
+    }
+    this._lens(w / 2 / h, true);
+    R.setScissorTest(true);
+    for (let end = 0; end < 2; end++) {
+      R.setViewport(end * w / 2, 0, w / 2, h); R.setScissor(end * w / 2, 0, w / 2, h);
+      this._camera(game, dt, t, this.rigs[end], end);
+      R.render(S, this.camera);
+    }
+    R.setScissorTest(false);
   }
 
   // the middle of the players at one end
@@ -538,18 +568,19 @@ export class Tennis3D {
     this.ring.visible = ringOn;
   }
 
-  _camera(game, dt, t) {
+  _camera(game, dt, t, rig, end) {
     const pos = new THREE.Vector3(), look = new THREE.Vector3();
     const b = game.ballNow(t);
     // broadcast view from high behind one baseline, drifting a little with the ball. When the camera changes
     // ends it swings round the side of the court (angle 0: behind the near end, π: behind the far end).
-    const want = game.camEnd === 1 ? Math.PI : 0;
-    if (this.camAng === undefined || this.snapNext) this.camAng = want;
-    this.camAng += (want - this.camAng) * (1 - Math.exp(-dt * 1.5));
-    if (Math.abs(want - this.camAng) < 1e-3) this.camAng = want;
-    const a = this.camAng, ca = Math.cos(a), sa = Math.sin(a);
+    const want = end === 1 ? Math.PI : 0;
+    if (rig.ang === undefined || rig.snap) rig.ang = want;
+    rig.ang += (want - rig.ang) * (1 - Math.exp(-dt * 1.5));
+    if (Math.abs(want - rig.ang) < 1e-3) rig.ang = want;
+    const a = rig.ang, ca = Math.cos(a), sa = Math.sin(a);
     const bx = b ? Math.max(-5, Math.min(5, b.x)) : 0;
     pos.set(sa * 28 + bx * 0.18 * ca, 6.6 + 10 * sa, ca * 26); look.set(bx * 0.3, 0.2, -2.5 * ca);   // up and over the side stand
+    if (game.split) { pos.set(bx * 0.25 * ca, 7.4, ca * 24.5); look.set(bx * 0.35, 0, ca * 1.5); }   // half a screen: closer in, looking down the court
     let rate = sa > 0.05 ? 6 : 2.2;   // follow the swing closely
     // match won: swing in on the winner
     const lp = game.lastPoint;
@@ -557,9 +588,9 @@ export class Tennis3D {
       const P = this._endMid(game, lp.end), s = lp.end === 0 ? -1 : 1;
       pos.copy(V(P.x + 2.5, 2.4, P.z - s * 5.5)); look.copy(V(P.x, 1.3, P.z)); rate = 1.3;
     }
-    const k = this.snapNext ? 1 : 1 - Math.exp(-dt * rate);
-    this.snapNext = false;
-    this.camPos.lerp(pos, k); this.camLook.lerp(look, k);
-    this.camera.position.copy(this.camPos); this.camera.lookAt(this.camLook);
+    const k = rig.snap ? 1 : 1 - Math.exp(-dt * rate);
+    rig.snap = false;
+    rig.pos.lerp(pos, k); rig.look.lerp(look, k);
+    this.camera.position.copy(rig.pos); this.camera.lookAt(rig.look);
   }
 }

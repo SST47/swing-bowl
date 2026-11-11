@@ -617,8 +617,12 @@ export class Golf3D {
       G.group.rotation.y = Math.atan2(f.x * h, f.z * h);
       G.group.scale.x = h;
       G.shirt.color.set(p.color === '#ffffff' ? '#e8edf5' : p.color);
-      const target = game.armed === game.cur ? (club.putter ? 0.42 : 2.3) : 0;
-      this.theta += (target - this.theta) * Math.min(1, dt * (target ? 2.2 : 6));
+      // the backswing: follows the phone as you take it back (or just winds up, without live tilt)
+      const armed = game.armed === game.cur, full = club.putter ? 0.42 : 2.3;
+      const lv = armed && game.live && game.live.idx === game.cur && performance.now() - game.live.at < 1500 ? game.live : null;
+      if (!armed) this._y0 = null; else if (lv && this._y0 == null) this._y0 = lv.y;
+      const target = !armed ? 0 : lv ? full * Math.max(0.1, Math.min(1, Math.abs(lv.y - this._y0) / 1.1)) : full;
+      this.theta += (target - this.theta) * Math.min(1, dt * (lv ? 12 : target ? 2.2 : 6));
     }
     if (this.swingAnim) {
       const k = Math.min(1, (now - this.swingAnim.t0) / 320), e = 1 - Math.pow(1 - k, 3);

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2e9f4f">
+<title>Swing Sports · Join the room</title>
+<link rel="preload" href="fonts/fredoka.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="g-hub">
+<div class="pad">
+  <div class="top">
+    <div class="me"><i id="dot"></i><span id="myname">Controller</span></div>
+    <div class="topbtns"><button class="gear" id="settings">⚙︎ Settings</button></div>
+  </div>
+  <div class="state" id="state">Not connected</div>
+  <div class="readout" id="who"></div>
+  <div class="hubpicks" id="picks" hidden>
+    <button data-game="bowling"><span>🎳</span>Bowling</button>
+    <button data-game="golf"><span>⛳</span>Golf</button>
+    <button data-game="baseball"><span>⚾</span>Home Run Derby</button>
+    <button data-game="tennis"><span>🎾</span>Tennis</button>
+  </div>
+</div>
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h2>Join the room</h2>
+    <p>Enter the code on the big screen.</p>
+    <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+    <input id="name" class="name" maxlength="14" placeholder="Your name" autocomplete="off">
+    <button class="btn" id="go">Join</button>
+    <p class="status" id="sheetStatus"></p>
+    <p class="help">One code gets you into every game. When a game starts on the big screen, your phone follows it and becomes the controller.</p>
+  </div>
+</div>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
+<script src="js/motion.js"></script>
+<script src="js/net.js"></script>
+<script src="js/pad.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const store = SB.store;
+  let cid = store.get('cid', null);
+  if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
+  const params = new URLSearchParams(location.search);
+  $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
+  $('name').value = store.get('name', '');
+  let kicked = false, st = null;
+  const setState = (text, go) => { const el = $('state'); el.textContent = text; el.classList.toggle('go', !!go); };
+  const client = new SB.Client({
+    id: cid, game: 'hub',
+    onStatus(kind, text) {
+      if (kind === 'open') { $('sheet').hidden = true; setState('You’re in! Pick a game.', true); }
+      else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('picks').hidden = true; }
+      else $('sheetStatus').textContent = text;
+    },
+    onMessage(m) {
+      if (m && m.t === 'switch') { if (SB.followSwitch(m)) setState('Here we go…', true); return; }
+      if (m && m.t === 'kicked') { kicked = true; st = null; $('picks').hidden = true; setState('Removed from the room'); $('sheet').hidden = false; $('sheetStatus').textContent = 'The big screen removed you. Tap “Join again” if you want back in.'; $('go').textContent = 'Join again'; return; }
+      if (m && m.t === 'state' && !kicked) { st = m; render(); }
+    },
+  });
+  function render() {
+    const me = st && st.you !== null && st.players[st.you];
+    if (!me) return;
+    $('dot').style.background = me.color; $('myname').textContent = me.name;
+    $('picks').hidden = false;
+    const others = st.players.filter((p, i) => i !== st.you).map(p => SB.esc(p.name));
+    $('who').innerHTML = others.length ? `In the room with <b>${others.join(', ')}</b>` : 'You’re the first one here. Others can scan the code on the big screen.';
+  }
+  document.querySelectorAll('#picks [data-game]').forEach(b => { b.onclick = () => { client.send({ t: 'pick', game: b.dataset.game }); setState('Starting ' + b.textContent.replace(/^\W+/, '') + '…', true); }; });
+  $('settings').onclick = () => { $('sheet').hidden = false; $('go').textContent = client.open ? 'Save' : 'Join'; $('sheetStatus').textContent = ''; };
+  $('sheet').addEventListener('input', e => { if (e.target.id === 'room') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+  const join = (room, name, rejoin) => { kicked = false; client.connect(room, { t: 'hello', id: cid, name, rejoin: !!rejoin }); };
+  $('go').onclick = () => {
+    const room = $('room').value.trim().toUpperCase(), name = $('name').value.trim().slice(0, 14);
+    if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
+    store.set('room', room); store.set('name', name);
+    if (client.open && client.code === room && !kicked) { client.send({ t: 'name', name }); $('sheet').hidden = true; return; }
+    join(room, name, kicked);
+  };
+  // sent back here from a game (the big screen went back to the menu): rejoin straight away
+  if (params.get('join') === '1' && /^[A-Z]{4}$/.test(params.get('room') || '')) {
+    history.replaceState(null, '', location.pathname + '?room=' + params.get('room'));
+    $('sheet').hidden = true; setState('Joining the room…'); store.set('room', params.get('room'));
+    join(params.get('room'), store.get('name', ''));
+  }
+})();
+</script>
+</body>
+</html>

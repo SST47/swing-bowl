@@ -166,7 +166,7 @@
         ballColor: p ? p.color : COLORS[0],
         aim: aiming ? { x: p.startX, aim: 0, color: p.color + '88' } : null,   // straight-line guide from the start position
         // extra detail for the 3D view
-        state: this.state, holding: this.holding !== null, throwAt: this.throwAt, celebrate: this.celebrate,
+        state: this.state, holding: this.holding !== null, live: this.live && this.live.idx === this.holding ? this.live : null, throwAt: this.throwAt, celebrate: this.celebrate,
         startX: p ? p.startX : 0, color: p ? p.color : COLORS[0], lefty: !!(p && p.lefty), dt,
       });
       if (this.state === 'rolling') this._renderPins();

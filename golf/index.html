@@ -63,7 +63,7 @@ import { Golf3D } from '../js/golf3d.js';
     if (!info.over) overShown = false;
   } });
   room = new SB.Room({
-    gameId: 'golf', namespace: 'swinggolf/v1/', storageKey: 'sg-room', game,
+    gameId: 'golf', game,
     stateFor: (idx, info) => ({
       game: 'golf', yourTurn: idx !== null && idx === info.cur && info.state === 'address' && !info.over,
       hole: info.hole, holes: info.holes, par: info.par, dist: info.dist, lie: info.lie, club: info.club, clubIdx: info.clubIdx, putter: info.putter, stroke: info.stroke, state: info.state,

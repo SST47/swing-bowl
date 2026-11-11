@@ -18,6 +18,9 @@
   const REACT = 0.2;            // s before a player starts running for the other side's shot
   const REACT_SERVE = 0.1;      // ...and for a serve (the returner is ready for it)
   const REACH = 1.25;           // m: further than this from the ball's line and it gets past you
+  const REACH_RETURN = 2.2;     // ...but a serve that lands in can always be got to (returning is hard enough)
+  const SERVE_EASE = 0.68;      // serves to a person are this much slower than serves to the computer
+  const RETURN_SLACK = 0.6;     // ...and timing on the return is judged this much more kindly
   const REACH_TILT = 1.6;       // ...a little more for someone steering by tilting their phone
   const TILT_HELP = 2.5;        // m/s: in the last moment before your ball, a tilt-steered player drifts into range
   const ACCEL_TILT = 34;        // m/s²: someone steering turns round quicker (so it feels like it follows the phone)
@@ -41,6 +44,7 @@
       this._buildFigs();
       this.camEnd = 0;          // the end the camera sits behind
       this.flipView = false;    // change ends (the camera) before the next point
+      this.splitOn = true;      // two people facing each other: half the screen each, from behind their own player
       this.serveSlot = [0, 0];  // doubles: which partner serves next, per end
       this.lastHit = [null, null];   // the figure that last hit for each end
       this.matches = 0;
@@ -90,6 +94,8 @@
     _humansOnCourt() { return this.figs.filter(f => f.idx !== null).map(f => f.idx); }
     _humanEnds() { return [0, 1].filter(e => this.lineup[e].some(i => i !== null)); }
     _bothHuman() { return this._humanEnds().length === 2; }
+    get split() { return this.splitOn && this._bothHuman(); }
+    toggleSplit() { this.splitOn = !this.splitOn; if (this._bothHuman()) this._flash(this.splitOn ? 'SPLIT SCREEN' : `ONE VIEW · BEHIND ${this._nm(this.camEnd).toUpperCase()}`, 'info'); this._emit(); return true; }
 
     // ---------- players ----------
     canJoinNow() { return this.players.length < 6; }
@@ -175,7 +181,7 @@
         state: this.state, over: this.over, started: this.started, mode: this.mode, doubles: this.doubles,
         players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins, lefty: !!q.lefty, tilt: !!q.tilt })),
         lineup: this.lineup.map(a => a.slice()), court: this.court, server: s.server, serverFig: sf,
-        games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd,
+        games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd, split: this.split,
         cur: X ? this.figs[X.fig].idx : serving && sf !== null ? this.figs[sf].idx : null,
         hitting: X ? X.end : null, hittingFig: X ? X.fig : null, winner: s.winner,
       };
@@ -214,8 +220,9 @@
         if (!cpu) this._learn(fi, raw);
         const from = tossAt(this.toss.hand, Math.max(0, at - this.toss.t0));
         const second = this.faults === 1;
-        if (cpu) power = second ? 0.45 + Math.random() * 0.3 : 0.5 + Math.random() * 0.4;
-        const sv = serve({ dt, power, from, side: F.side, deuce: this.score.deuceSide, second });
+        const toHuman = this._endFigs(1 - F.end).some(k => !this.isCpu(k));
+        if (cpu) power = second ? 0.3 + Math.random() * 0.3 : 0.35 + Math.random() * 0.4;
+        const sv = serve({ dt, power, from, side: F.side, deuce: this.score.deuceSide, second, ease: toHuman ? SERVE_EASE : 1 });
         if (!sv) { this._note(fi, dt > 0 ? 'Too late: hit it as it falls' : 'Too early'); return; }   // a whiff: the toss just drops
         this.toss = null; this.started = true;
         this._launch(fi, from, sv, at, 'serve');
@@ -225,7 +232,9 @@
       // a rally shot
       const X = this.expect;
       if (this.state !== 'rally' || !X || X.fig !== fi || X.done) return;
-      const raw = at - X.T, dt = raw - (cpu ? 0 : this._lag(fi));
+      const raw = at - X.T, onRet = !cpu && this.ball && this.ball.kind === 'serve';
+      let dt = raw - (cpu ? 0 : this._lag(fi));
+      if (onRet) dt *= RETURN_SLACK;   // returning serve: a wider window
       if (dt < -WINDOW) { if (!X.early) X.early = { at }; F.swingAt = cpu ? at : tNow + SWING_LEAD; F.swingKind = X.forehand ? 'fh' : 'bh'; return; }   // way early: a better one may follow
       F.swingAt = cpu ? at : tNow + SWING_LEAD;
       if (!cpu) this._learn(fi, raw);
@@ -235,10 +244,10 @@
       const P = this._posAt(fi, at), tilt = this.isTilt(fi);
       if (tilt) X.forehand = Math.abs(P.x - X.fhX) <= Math.abs(P.x - X.bhX) + 0.3;   // steering: you play the side you got to
       const far = Math.hypot(P.x - (tilt ? (X.forehand ? X.fhX : X.bhX) : F.goal.x), P.z - F.goal.z);
-      if (far > (tilt ? REACH_TILT : REACH)) { X.done = true; if (!cpu) this._note(fi, 'Couldn’t reach that one'); return; }
+      if (far > (onRet ? REACH_RETURN : tilt ? REACH_TILT : REACH)) { X.done = true; if (!cpu) this._note(fi, 'Couldn’t reach that one'); return; }
       // a stretch or a fast ball makes it harder to play well
       const inKmh = this.lastShot ? this.lastShot.kmh : 80, onServe = this.lastShot && this.lastShot.kind === 'serve';
-      const pace = onServe ? 0.3 * clamp((inKmh - 110) / 60, 0, 1) : 0.45 * clamp((inKmh - 95) / 70, 0, 1);   // (a returner expects a fast serve)
+      const pace = onServe ? (cpu ? 0.3 : 0.12) * clamp((inKmh - 110) / 60, 0, 1) : 0.45 * clamp((inKmh - 95) / 70, 0, 1);   // (a returner expects a fast serve)
       const pressure = clamp(0.8 * Math.max(0, far - 0.4) / ((tilt ? REACH_TILT : REACH) - 0.4) + pace, 0, 1);
       const from = this._ballAt(at) || X.p;
       if (cpu) power = this._cpuPower(pressure, inKmh, X.p);
@@ -370,7 +379,7 @@
       const srvEnd = this.score.server;
       const res = this.score.point(end);
       this.faults = 0;   // the next point starts with a first serve
-      if (res !== 'point') { if (this.doubles) this.serveSlot[srvEnd] ^= 1; if (this._bothHuman()) this.flipView = true; }
+      if (res !== 'point') { if (this.doubles) this.serveSlot[srvEnd] ^= 1; if (this._bothHuman() && !this.split) this.flipView = true; }
       this.state = 'point'; this.timer = res === 'match' ? 6 : 2.4;
       this.expect = null; this.cpuSwing = null; this.toss = null;
       const t = now();
@@ -512,7 +521,7 @@
           // steering by tilt, in a rally: left and right as you see them on the big screen (front to back
           // stays automatic). In the last moment before your ball you drift the rest of the way into range.
           if (this.state === 'rally' && this.isTilt(fi)) {
-            const scr = this.camEnd === 0 ? 1 : -1, steer = tk - (E.steerAt || -9) < 1 ? E.steer || 0 : 0;
+            const scr = (this.split ? E.end : this.camEnd) === 0 ? 1 : -1, steer = tk - (E.steerAt || -9) < 1 ? E.steer || 0 : 0;
             tx = steer * SPEED * scr;
             if (X && X.fig === fi && !X.done && tk > X.T - 0.35) {
               const gx = Math.abs(E.pos.x - X.fhX) <= Math.abs(E.pos.x - X.bhX) + 0.3 ? X.fhX : X.bhX;

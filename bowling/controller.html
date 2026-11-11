@@ -89,7 +89,7 @@
     canSwing: () => !!(st && st.yourTurn),
     isOver: () => !!(st && st.over),
     onNewGame: () => client.send({ t: 'newgame' }),
-    onArm: on => client.send({ t: 'hold', on }),
+    onArm: on => { client.send({ t: 'hold', on }); live.on = on && !pad.tapMode; },
     onSwing: r => {
       client.send({ t: 'throw', speed: r.speed, spin: r.spin, steer: r.steer || 0 });
       const d = describe(r);
@@ -141,6 +141,8 @@
   }
 
   // starting position
+  // the bowler's backswing on the big screen follows the phone while the button's held
+  const live = SB.liveTilt({ onLive: v => client.send({ t: 'live', x: v.x, y: v.y }) });
   SB.repeatButton($('left'), () => st && st.yourTurn && client.send({ t: 'move', d: -1 }));
   SB.repeatButton($('right'), () => st && st.yourTurn && client.send({ t: 'move', d: 1 }));
 

@@ -74,7 +74,7 @@ import { Bowl3D } from '../js/bowl3d.js';
   // ---------- room: QR, lobby, phones <-> players, kicking ----------
   window.__bowl = app;   // handy for debugging from the console
   room = new SB.Room({
-    gameId: 'bowling', namespace: 'swingbowl/v1/', storageKey: 'sb-room', game: app, hideOn: ['throw'],
+    gameId: 'bowling', game: app, hideOn: ['throw'],
     stateFor: (idx, info) => Object.assign({}, info, { yourTurn: idx !== null && idx === info.cur && info.state === 'aim' && !info.over }),
   });
   room.start();

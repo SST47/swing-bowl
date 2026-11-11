@@ -353,7 +353,12 @@ export class Bowl3D {
     const throwing = (state === 'throwing' || state === 'rolling' || state === 'result') && o.throwAt && sinceThrow < 6;
     if (throwing) { pose = samplePose(THROW_KEYS, sinceThrow); slide = Math.min(1, sinceThrow / 0.26); }
     else {
-      const k = this._holdK = Math.max(0, Math.min(1, (this._holdK || 0) + (o.holding ? dt / 0.75 : -dt / 0.3)));
+      // the backswing: follows the phone while the button's held (or just winds up, without live tilt)
+      const lv = o.holding && o.live && performance.now() - o.live.at < 1500 ? o.live : null;
+      if (!o.holding) this._y0 = null; else if (lv && this._y0 == null) this._y0 = lv.y;
+      const prev = this._holdK || 0;
+      const k = this._holdK = lv ? prev + (Math.max(0.08, Math.min(1, Math.abs(lv.y - this._y0) / 0.75)) - prev) * Math.min(1, dt * 12)
+        : Math.max(0, Math.min(1, prev + (o.holding ? dt / 0.75 : -dt / 0.3)));
       pose = samplePose([{ t: 0, pose: POSE.idle }, { t: 1, pose: POSE.back }], k);
       if (state === 'aim') this._lastAimX = startX;
     }

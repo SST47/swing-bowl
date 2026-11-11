@@ -370,3 +370,38 @@ body:not([class*="g-"]) .tapgo, body.g-golf .tapgo { background: repeating-linea
     linear-gradient(180deg, transparent 196px, rgba(255,255,255,.5) 196px 200px, transparent 200px),
     repeating-linear-gradient(90deg, var(--turf) 0 60px, var(--turf-2) 60px 120px); }
 }
+
+/* ---------- the room: one code for every game ---------- */
+.roomcard { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; margin: 40px 0 0; background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 26px; box-shadow: 0 9px 0 var(--ink); padding: 22px 26px; }
+.roomcard .qr { width: 196px; height: 196px; display: grid; place-items: center; text-align: center; font-size: 14px; color: #557060; }
+.roomcard .qr img, .roomcard .qr canvas { width: 196px !important; height: 196px !important; }
+.roomcard h2 { margin: 0; font-size: 30px; font-weight: 700; font-stretch: 112%; }
+.roomcard p { margin: 6px 0 12px; color: #3c5a47; font-size: 16.5px; line-height: 1.42; max-width: 52ch; }
+.roomcard .rc-code { display: inline-flex; align-items: center; gap: 12px; }
+.roomcard .rc-code span { font-size: 15px; font-weight: 550; color: #557060; }
+.roomcard .rc-code b { background: var(--ball); border: 3px solid var(--ink); border-radius: 14px; padding: 2px 16px 4px; font-size: 40px; font-weight: 700; letter-spacing: .12em; }
+.roomcard .joinurl { margin-top: 8px; font-size: 13.5px; color: #557060; word-break: break-all; }
+.roomcard .status { margin-top: 4px; font-size: 14.5px; color: #3c5a47; }
+.roomcard .status.err { color: var(--red-dark); }
+.roomcard .players { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pick.going { transform: translateY(6px); box-shadow: 0 3px 0 var(--ink); opacity: .8; }
+@media (max-width: 720px) { .roomcard { grid-template-columns: 1fr; justify-items: center; text-align: center; } .roomcard .players { justify-content: center; } }
+/* the phone in the room, before a game is picked */
+.pad .hubpicks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.pad .hubpicks[hidden] { display: none; }
+.pad .hubpicks button { display: grid; gap: 4px; justify-items: center; padding: 18px 8px 16px; border-radius: 20px; border: 3px solid var(--ink); color: #fff; font-size: 18px; font-weight: 650; box-shadow: 0 6px 0 var(--ink); }
+.pad .hubpicks button:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--ink); }
+.pad .hubpicks button span { font-size: 40px; }
+.pad .hubpicks button[data-game="bowling"] { background: var(--lane); }
+.pad .hubpicks button[data-game="golf"] { background: var(--turf-2); }
+.pad .hubpicks button[data-game="baseball"] { background: var(--clay); }
+.pad .hubpicks button[data-game="tennis"] { background: var(--court); }
+.switcher .games button[data-game="hub"] { background: var(--ink); }
+/* tennis split screen: a divider and a name tag over each half */
+.tsplit { position: absolute; inset: 0; pointer-events: none; }
+.tsplit[hidden] { display: none; }
+.tsplit i { position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: var(--ink); box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.tsplit b { position: absolute; bottom: 74px; padding: 4px 16px 6px; border-radius: 14px; border: 3px solid var(--ink); color: var(--ink); font-size: clamp(15px, 1.7vw, 22px); font-weight: 650; box-shadow: 0 4px 0 var(--ink); transform: translateX(-50%); }
+.tsplit b.l { left: 9%; } .tsplit b.r { left: 91%; }
+.pad .pitchrow button { font-size: 13.5px; padding: 10px 2px; }
+.pad .pitchrow button.on { background: var(--ball); }

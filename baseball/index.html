@@ -64,10 +64,11 @@ import { Ball3D } from '../js/ball3d.js';
     if (!info.over) overShown = false;
   } });
   room = new SB.Room({
-    gameId: 'baseball', namespace: 'swingball/v1/', storageKey: 'sbb-room', game,
+    gameId: 'baseball', game,
     stateFor: (idx, info) => ({
       game: 'baseball', state: info.state, yourTurn: idx !== null && idx === info.cur && !info.over,
       swingsLeft: info.swingsLeft, hrs: info.hrs, pitching: info.pitching, note: idx !== null && idx === info.cur ? info.note : null,
+      youPitch: idx !== null && idx === info.pitcher, canThrow: info.canThrow, pick: (idx !== null && info.picks[idx]) || 'FB', pitcher: info.pitcher,
     }),
   });
   room.start();

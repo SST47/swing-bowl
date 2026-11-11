@@ -241,7 +241,8 @@
       if (!back) return;                       // still on the backswing
       const forward = c => c && c !== back && c.sign !== back.sign;
       // forward swing peaked and is slowing down...
-      if (forward(cur) && cur.peak >= this.minPeak && Math.abs(s.r) < cur.peak * 0.5) return this._fire(cur, s.t);
+      // (it fires as soon as the swing is clearly past its fastest point, so the shot on screen isn't kept waiting)
+      if (forward(cur) && cur.peak >= this.minPeak && Math.abs(s.r) < cur.peak * 0.7) return this._fire(cur, s.t);
       // ...or it already reversed again (a quick recoil) before slowing much
       const last = S.list[S.list.length - 1];
       if (cur.start === s.t && forward(last) && last.peak >= this.minPeak) this._fire(last, s.t);
@@ -263,7 +264,8 @@
       if (s.t < this.cooldownUntil) return;
       const A = this.auto;
       if (s.mag > A.peak) { A.peak = s.mag; A.peakT = s.t; }
-      if (A.peak >= this.minPeak && s.mag < A.peak * 0.5) {
+      // past its fastest point: send it now (sooner than waiting for the swing to die away, so the screen reacts faster)
+      if (A.peak >= this.minPeak && (s.mag < A.peak * 0.7 || (s.t - A.peakT > 60 && s.mag < A.peak * 0.9))) {
         this._fire({ maxMag: A.peak, peakT: A.peakT }, s.t);
         this.fired = false;                  // auto mode keeps listening
         this.cooldownUntil = s.t + AUTO_COOLDOWN_MS;

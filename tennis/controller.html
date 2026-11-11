@@ -52,11 +52,11 @@
   let cid = store.get('cid', null);
   if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
   const params = new URLSearchParams(location.search);
-  $('room').value = (params.get('room') || store.get('tennis-room', '')).toUpperCase();
+  $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
   $('name').value = store.get('name', '');
   let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0, lastNote = null, speedText = '';
   const client = new SB.Client({
-    id: cid, namespace: 'swingtennis/v1/',
+    id: cid,
     onStatus(kind, text) {
       if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for a match…'); client.startSync(); }
       else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('hold').disabled = true; }
@@ -155,7 +155,7 @@
     const me = st.you !== null && st.players[st.you];
     if (me) {
       $('dot').style.background = me.color; $('myname').textContent = me.name;
-      const cam = st.view === 'you' ? '<br>📷 The camera is behind you' : st.view === 'them' ? '<br>📷 The camera is at the other end' : '';
+      const cam = st.view === 'left' ? '<br>📺 You’re the left half of the screen' : st.view === 'right' ? '<br>📺 You’re the right half of the screen' : st.view === 'you' ? '<br>📷 The camera is behind you' : st.view === 'them' ? '<br>📷 The camera is at the other end' : '';
       const mate = st.partner ? `With <b>${SB.esc(st.partner)}</b> · ` : '';
       $('tally').innerHTML = st.onCourt ? `${mate}Games <b>${st.games[st.end]}–${st.games[1 - st.end]}</b> · Points <b>${st.points[st.end]}–${st.points[1 - st.end]}</b> · Wins <b>${me.wins}</b>${cam}` : `Wins <b>${me.wins}</b>`;
     }
@@ -187,7 +187,7 @@
     const room = $('room').value.trim().toUpperCase();
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
-    store.set('tennis-room', room); store.set('name', name);
+    store.set('room', room); store.set('name', name);
     if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
@@ -203,7 +203,7 @@
   // arrived from a game switch on the big screen: rejoin straight away, one tap turns on motion
   SB.autoJoin({
     title: 'Tennis',
-    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('tennis-room', room); setState('Joining Tennis…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
+    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('room', room); setState('Joining Tennis…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
     enable: async () => { if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); } },
   });
 })();

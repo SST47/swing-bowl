@@ -187,9 +187,14 @@
    * the new game; each phone follows to that game's controller and rejoins the same room code.
    */
   const GAMES = { bowling: 'Bowling', golf: 'Golf', baseball: 'Baseball', tennis: 'Tennis' };
+  const SITE = (document.currentScript && document.currentScript.src || '').replace(/js\/pad\.js.*$/, '');   // where the games live
+  const HERE = (() => { const s = location.pathname.split('/').filter(Boolean); return /controller\.html$/.test(s[s.length - 1] || '') ? s[s.length - 2] : 'hub'; })();
+  let following = false;
   function followSwitch(m) {
-    if (!m || !GAMES[m.game] || !/^[A-Z]{4}$/.test(m.room || '')) return false;
-    location.href = new URL(`../${m.game}/controller.html?room=${m.room}&join=1`, location.href).href;
+    if (!m || !(GAMES[m.game] || m.game === 'hub') || !/^[A-Z]{4}$/.test(m.room || '')) return false;
+    if (m.game === HERE || following) return false;   // already there
+    following = true;
+    location.replace(new URL(`${m.game === 'hub' ? 'join.html' : m.game + '/controller.html'}?room=${m.room}&join=1`, SITE || location.href).href);
     return true;
   }
   // Arrived from a switch: join right away (the big screen is expecting us), and ask for one tap,
@@ -296,5 +301,35 @@
     return { get on() { return on; }, set on(v) { if (!!v !== on) sentAt = 0; on = !!v; }, get value() { return val; } };
   }
 
-  root.SB = Object.assign(root.SB || {}, { repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch, tiltUp, tiltSteer });
+  /*
+   * Live tilt: while .on, the big screen is told how the phone is being held, up to 10 times a second
+   * (only when it changes), so the player on screen moves with you before the swing: the bat follows your
+   * hands, the golf club goes back as you take it back, the bowling arm swings back.
+   * onLive({ x, y }): x = how far the right edge tips down (-1..1), y = how far the top end points up (-1..1).
+   */
+  function liveTilt({ onLive }) {
+    let on = false, x = 0, y = 0, sx = 0, sy = 0, sent = null, sentAt = 0, orientAt = 0, got = false;
+    const D = Math.PI / 180;
+    root.addEventListener('deviceorientation', e => {
+      if (e.beta === null || e.beta === undefined || e.gamma === null || e.gamma === undefined) return;
+      orientAt = performance.now(); got = true;
+      x = Math.sin(e.gamma * D) * Math.cos(e.beta * D); y = Math.sin(e.beta * D);
+    });
+    root.addEventListener('devicemotion', e => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x === null || performance.now() - orientAt < 1000) return;
+      got = true; x = Math.max(-1, Math.min(1, -g.x / 9.81)); y = Math.max(-1, Math.min(1, g.y / 9.81));
+    });
+    setInterval(() => {
+      sx += (x - sx) * 0.55; sy += (y - sy) * 0.55;
+      if (!on || !got) return;
+      const t = performance.now();
+      if (!sent || Math.abs(sx - sent.x) > 0.06 || Math.abs(sy - sent.y) > 0.06 || t - sentAt > 700) {
+        sent = { x: Math.round(sx * 100) / 100, y: Math.round(sy * 100) / 100 }; sentAt = t; onLive(sent);
+      }
+    }, 100);
+    return { get on() { return on; }, set on(v) { if (!!v && !on) sent = null; on = !!v; } };
+  }
+
+  root.SB = Object.assign(root.SB || {}, { liveTilt, repeatButton, makeSwingPad, keepAwake, store, clearUndo, esc, followSwitch, autoJoin, GAMES, handSwitch, tiltUp, tiltSteer });
 })(self);

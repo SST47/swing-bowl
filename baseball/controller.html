@@ -20,6 +20,7 @@
   <div class="meter"><div id="meter"></div></div>
   <div class="readout" id="readout"></div>
   <div class="readout" id="tally"></div>
+  <div class="moderow pitchrow" id="pitchRow" hidden><button data-pitch="FB">Fastball</button><button data-pitch="CH">Changeup</button><button data-pitch="CB">Curve</button><button data-pitch="SL">Slider</button></div>
   <div class="holdwrap">
     <button class="hold" id="hold" disabled><span class="lbl">READY</span><small>tap, then just swing</small></button>
   </div>
@@ -50,13 +51,13 @@
   let cid = store.get('cid', null);
   if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
   const params = new URLSearchParams(location.search);
-  $('room').value = (params.get('room') || store.get('ball-room', '')).toUpperCase();
+  $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
   $('name').value = store.get('name', '');
   if (store.get('hand', null) === null && store.get('ball-lefty', '0') === '1') store.set('hand', 'L');   // the old Settings checkbox
 
   let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0, lastNote = null, speedText = '';
   const client = new SB.Client({
-    id: cid, namespace: 'swingball/v1/',
+    id: cid,
     onStatus(kind, text) {
       if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for the derby…'); client.startSync(); }
       else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('hold').disabled = true; }
@@ -77,7 +78,7 @@
   const pad = SB.makeSwingPad({
     mode: 'auto', button: $('hold'), meter: $('meter'), minPeak: 350, fullPeak: 1000,
     labels: { hold: 'READY', sub: 'tap, then just swing', tapHold: 'SWING', tapSub: 'tap and let go to swing' },
-    canSwing: () => !!(st && st.yourTurn),
+    canSwing: () => !!(st && (st.yourTurn || st.youPitch)),
     onArm: () => {
       if (!st || !st.yourTurn || st.pitching) return;   // READY is for between pitches
       client.send({ t: 'arm', on: true });
@@ -85,6 +86,13 @@
       setState(pad.tapMode ? 'Ready! Tap when the ball reaches you.' : 'Ready! Watch the screen and swing.', true);
     },
     onSwing: r => {
+      if (st && st.youPitch) {   // pitching: the swing is the throw
+        if (!st.canThrow) return;
+        client.send({ t: 'swing', power: r.power });
+        $('readout').innerHTML = `Threw it at <b>${Math.round(r.power * 100)}%</b>`;
+        if (navigator.vibrate) navigator.vibrate(20);
+        return;
+      }
       if (r.tap && armTap) { armTap = false; return; }
       const at = client.synced ? client.hostTime(r.peakT) : null;
       client.send({ t: 'swing', power: r.power, at });
@@ -99,6 +107,11 @@
     },
     onHint: hint,
   });
+
+  // the bat on the big screen follows the phone while you wait for the pitch
+  const live = SB.liveTilt({ onLive: v => client.send({ t: 'live', x: v.x, y: v.y }) });
+  // pitching (when it's someone else's turn to bat): choose what to throw
+  document.querySelectorAll('#pitchRow [data-pitch]').forEach(b => { b.onclick = () => { if (st && st.youPitch) { client.send({ t: 'pick', id: b.dataset.pitch }); st.pick = b.dataset.pitch; render(); } }; });
 
   // The host removed this phone from the game: stop, and offer a way back in.
   function onKicked() {
@@ -117,11 +130,18 @@
   function render() {
     if (!st) return;
     const me = st.you !== null && st.players[st.you];
-    if (me) { $('dot').style.background = me.color; $('myname').textContent = me.name; $('tally').innerHTML = `Home runs <b>${me.hrs}</b> · Longest <b>${me.longest ? me.longest + ' m' : '–'}</b>`; }
-    $('hold').disabled = !st.yourTurn;
+    if (me) { $('dot').style.background = me.color; $('myname').textContent = me.name; $('tally').innerHTML = `Home runs <b>${me.hrs}</b> · Longest <b>${me.longest ? me.longest + ' m' : '–'}</b>${st.pitcher !== null && st.pitcher !== undefined ? ` · Strikes thrown <b>${me.ks || 0}</b>` : ''}`; }
+    $('hold').disabled = !(st.yourTurn || (st.youPitch && pad.tapMode));
+    live.on = !!st.yourTurn && !pad.tapMode;
+    $('pitchRow').hidden = !st.youPitch;
+    document.querySelectorAll('#pitchRow [data-pitch]').forEach(b => b.classList.toggle('on', b.dataset.pitch === st.pick));
+    const lbl = $('hold').querySelector('.lbl'), sub = $('hold').querySelector('small');
+    if (st.youPitch) { lbl.textContent = 'PITCH'; sub.textContent = pad.tapMode ? 'tap to throw' : 'swing your phone to throw'; }
+    else if (lbl.textContent === 'PITCH') { lbl.textContent = pad.tapMode ? 'SWING' : 'READY'; sub.textContent = pad.tapMode ? 'tap and let go to swing' : 'tap, then just swing'; }
     // what the big screen made of the last swing (or that no swing reached it)
     if (st.note && (!lastNote || st.note.at !== lastNote.at)) {
       lastNote = st.note;
+      if (navigator.vibrate) navigator.vibrate(/^Hit/.test(st.note.text) ? [0, 45] : /^Foul/.test(st.note.text) ? 20 : 0);   // feel the contact
       $('readout').innerHTML = (speedText ? speedText + ' · ' : '') + SB.esc(st.note.text);
       speedText = '';
     }
@@ -130,6 +150,7 @@
     if (st.queued) setState('You’re in! You’ll bat in the next derby.');
     else if (st.over) setState('Derby over! Ask the big screen for a new one.');
     else if (st.yourTurn) setState(st.pitching ? (pad.tapMode ? 'Here it comes… tap!' : 'Here it comes… swing!') : pad.tapMode ? `You’re up! ${st.swingsLeft} swings left. Tap to call the pitch, then tap to swing.` : `You’re up! ${st.swingsLeft} swings left. Tap READY, then swing.`, true);
+    else if (st.youPitch) setState(st.pitching ? 'There it goes!' : st.canThrow ? `You’re pitching to ${cur ? cur.name : 'the batter'}: pick a pitch, then ${pad.tapMode ? 'tap PITCH' : 'throw (swing your phone)'}.` : 'Nice throw…', st.canThrow && !st.pitching);
     else if (cur) setState(`${cur.name} is batting…`);
   }
 
@@ -139,7 +160,7 @@
     const room = $('room').value.trim().toUpperCase();
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
-    store.set('ball-room', room); store.set('name', name);
+    store.set('room', room); store.set('name', name);
     if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
     if (kicked && client.open && client.code === room) {
@@ -155,7 +176,7 @@
   // arrived from a game switch on the big screen: rejoin straight away, one tap turns on motion
   SB.autoJoin({
     title: 'Home Run Derby',
-    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('ball-room', room); setState('Joining Home Run Derby…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
+    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('room', room); setState('Joining Home Run Derby…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
     enable: async () => { if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); } },
   });
 })();

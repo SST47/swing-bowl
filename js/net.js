@@ -6,8 +6,12 @@
  * that can browse the web: no NAT traversal, no router "hairpinning", and it
  * doesn't matter whether the phone is on Wi-Fi or cellular.
  *
- * Topics:  swingbowl/v1/<ROOM>/up           phone  -> screen  {from, msg}
- *          swingbowl/v1/<ROOM>/down/<cid>   screen -> one phone
+ * Topics:  swingsports/v1/<ROOM>/up           phone  -> screen  {from, msg}
+ *          swingsports/v1/<ROOM>/down/<cid>   screen -> one phone
+ *          swingsports/v1/<ROOM>/all          screen -> every phone in the room
+ *
+ * One room code covers every game: whichever game the big screen is showing, it listens on the same
+ * topics, and tells phones that are on another game's controller where to go.
  *
  * The screen listens on every broker in BROKERS at once; a phone uses the
  * first one it can reach, so one broker being down doesn't break the game.
@@ -20,7 +24,7 @@
     'wss://broker.hivemq.com:8884/mqtt',
     'wss://test.mosquitto.org:8081/mqtt',
   ];
-  const DEFAULT_NS = 'swingbowl/v1/';
+  const DEFAULT_NS = 'swingsports/v1/';
   const LETTERS = 'BCDFGHJKLMNPQRSTVWXZ';
   const PEER_TIMEOUT = 12000;   // ms without a message before someone counts as gone
   const HEARTBEAT = 3000;
@@ -43,8 +47,8 @@
 
   // ---------------- big screen ----------------
   class Host {
-    constructor({ onStatus, onJoin, onMessage, onLeave, namespace }) {
-      this.base = namespace || DEFAULT_NS;
+    constructor({ onStatus, onJoin, onMessage, onLeave }) {
+      this.base = DEFAULT_NS;
       this.onStatus = onStatus || (() => {});
       this.onJoin = onJoin || (() => {});
       this.onMessage = onMessage || (() => {});
@@ -93,12 +97,17 @@
       if (c && c.connected) c.publish(this.base + this.code + '/down/' + cid, JSON.stringify(msg), { qos: 0 });
     }
     broadcast(fn) { for (const cid of this.peers.keys()) this.send(cid, fn(cid)); }
+    // to every phone in the room, including ones this page hasn't heard from yet
+    shout(msg) { for (const c of this.clients) if (c && c.connected) c.publish(this.base + this.code + '/all', JSON.stringify(msg), { qos: 0 }); }
   }
 
   // ---------------- phone ----------------
   class Client {
-    constructor({ onStatus, onMessage, id, namespace }) {
-      this.base = namespace || DEFAULT_NS;
+    constructor({ onStatus, onMessage, id, game }) {
+      this.base = DEFAULT_NS;
+      // which game's controller this page is (the big screen sends us on if it's showing another one)
+      const seg = root.location ? root.location.pathname.split('/').filter(Boolean) : [];
+      this.game = game || (/controller\.html$/.test(seg[seg.length - 1] || '') ? seg[seg.length - 2] : 'hub');
       this.syncs = [];
       this.offset = 0;
       this.onStatus = onStatus || (() => {});
@@ -111,7 +120,7 @@
 
     connect(code, hello) {
       if (!libLoaded()) { this.onStatus('error', 'Could not load the connection library. Check your internet connection and reload.'); return; }
-      this.code = code; this.hello = hello;
+      this.code = code; this.hello = Object.assign({ g: this.game }, hello);
       this.open = false;
       this._teardown();
       this.onStatus('connecting', 'Connecting to ' + code + '…');
@@ -136,6 +145,7 @@
         const first = !connected;
         connected = true;
         clearTimeout(this.brokerTimer);
+        c.subscribe(this.base + this.code + '/all', { qos: 0 });
         c.subscribe(this.base + this.code + '/down/' + this.cid, { qos: 0 }, () => { if (first) this._handshake(); else this.send(this.hello); });
       });
       c.on('message', (topic, payload) => {

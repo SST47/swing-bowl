@@ -128,10 +128,15 @@ const SWING_KEYS = [{ t: 0, v: [BT_LOAD, BAT_LOAD], ease: 'in' }, { t: SWING_CON
 const SWING_BODY = SWING_KEYS.map(k => ({ t: k.t, pose: k.v[0], ease: k.ease })), SWING_BAT = SWING_KEYS.map(k => ({ t: k.t, pose: { d: k.v[1] }, ease: k.ease }));
 const batDir = (since) => samplePose(SWING_BAT, since).d;
 // since: seconds since the swing started (negative = not swinging); load: 0 stance .. 1 loaded for the pitch
-function batterPose(since, load, t) {
+// live: the batter's phone ({ x, y }, smoothed), or null: the bat follows the hands
+function batterPose(since, load, t, live) {
   if (since >= 0 && since <= 1.6) return { pose: samplePose(SWING_BODY, since), bat: batDir(since) };
   const w = 1 - load;      // a small bat waggle while waiting, gone once the batter loads
-  const stanceBat = [BAT_STANCE[0] + 0.08 * w * Math.sin(t * 2.4), BAT_STANCE[1], BAT_STANCE[2] + 0.07 * w * Math.cos(t * 2.4)];
+  let stanceBat = [BAT_STANCE[0] + 0.08 * w * Math.sin(t * 2.4), BAT_STANCE[1], BAT_STANCE[2] + 0.07 * w * Math.cos(t * 2.4)];
+  if (live) {   // phone upright: bat up; phone laid back: bat laid back over the shoulder; tipped: it leans
+    const up = Math.max(0, Math.min(1, (live.y + 0.2) / 1.1));
+    stanceBat = [-0.8 + 0.6 * up + 0.5 * live.x, 0.15 + 0.8 * up, -0.6 + 0.35 * up];
+  }
   return { pose: mixPose(BT_STANCE, BT_LOAD, load), bat: mixPose({ d: stanceBat }, { d: BAT_LOAD }, load).d };
 }
 
@@ -422,6 +427,29 @@ export class Ball3D {
     this.flash.visible = false; this.flashAt = -10; this.lastHit = null; S.add(this.flash);
   }
 
+  // a home run: once the follow-through is done, the batter flips the bat away; it tumbles and lands in the dirt
+  _batFlip(game, t, since) {
+    const lo = game.lastOutcome;
+    const hr = (game.hit && game.hit.f.outcome === 'hr') || (game.state === 'result' && lo && lo.type === 'hr' && t - lo.at < 5);
+    if (!hr) { this.flip = null; return; }
+    if (!this.flip) {
+      if (since < 0.55) return;
+      const side = game.lefty ? -1 : 1;
+      this.flip = { t0: t, p: this.bat.position.clone(), q: this.bat.quaternion.clone(), v: new THREE.Vector3(0.9 * side, 4.4, -1.4), axis: new THREE.Vector3(0.3, 0.2, 1).normalize(), side };
+    }
+    const F = this.flip, u = t - F.t0, g = 9.81;
+    const y = F.p.y + F.v.y * u - 0.5 * g * u * u, ground = 0.04;
+    const tl = (F.v.y + Math.sqrt(F.v.y * F.v.y + 2 * g * (F.p.y - ground))) / g;   // when it lands
+    const ul = Math.min(u, tl), skid = Math.max(0, u - tl), slide = 1 - Math.exp(-skid * 4);
+    this.bat.position.set(F.p.x + F.v.x * ul + F.v.x * 0.12 * slide, Math.max(ground, y), F.p.z + F.v.z * ul + F.v.z * 0.12 * slide);
+    if (u < tl) { this.bat.quaternion.copy(F.q); this.bat.rotateOnAxis(F.axis, u * 13); }
+    else {   // lying in the dirt
+      if (!F.rest) { F.rest = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(F.side * 0.8, 0, 0.6).normalize()); F.land = this.bat.quaternion.clone(); }
+      this.bat.quaternion.copy(F.land).slerp(F.rest, Math.min(1, skid * 6));
+    }
+    this.swoosh.visible = false;
+  }
+
   _swoosh(since, hand, m) {
     const on = since > 0.03 && since < 0.36;
     this.swoosh.visible = on;
@@ -478,14 +506,22 @@ export class Ball3D {
     const BT = this.batter;
     const loadTo = game.state === 'pitch' ? 1 : game.state === 'windup' ? 0.45 * Math.max(0, Math.min(1, ((t - game.windupStart) / game.WINDUP - 0.55) / 0.45)) : 0;
     this.load += (loadTo - this.load) * Math.min(1, dt * (loadTo > this.load ? 6 : 2.5));
-    const since = t - game.swingAt + SWING_CONTACT, bp = batterPose(since, this.load, t);
+    const lv = game.live && game.live.idx === game.cur && performance.now() - game.live.at < 1500 ? game.live : null;
+    if (lv) { const k = Math.min(1, dt * 14); this.lv = this.lv || { x: lv.x, y: lv.y }; this.lv.x += (lv.x - this.lv.x) * k; this.lv.y += (lv.y - this.lv.y) * k; } else this.lv = null;
+    const since = t - game.swingAt + SWING_CONTACT, bp = batterPose(since, this.load, t, this.lv && (game.lefty ? { x: -this.lv.x, y: this.lv.y } : this.lv));
     applyPose(BT, bp.pose);
     BT.root.updateMatrixWorld(true);
     const hand = BT.arms.R.hand.getWorldPosition(new THREE.Vector3());
     const dir = new THREE.Vector3().fromArray(bp.bat).normalize().transformDirection(BT.root.matrixWorld);
     this.bat.position.copy(hand).addScaledVector(dir, -0.08);
     this.bat.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    // a mishit stings: the bat shudders for a moment after contact
+    if (game.hit && game.hit.c.quality < 0.4 && since > SWING_CONTACT && since < 0.5) {
+      const k = (0.5 - since) / (0.5 - SWING_CONTACT);
+      this.bat.rotateX(Math.sin(since * 95) * 0.09 * k); this.bat.rotateZ(Math.cos(since * 80) * 0.06 * k);
+    }
     this._swoosh(since, hand, BT.root.matrixWorld);
+    this._batFlip(game, t, since);
 
     // contact: a flash where the bat met the ball
     if (game.hit && game.hit !== this.lastHit) {
@@ -607,6 +643,9 @@ export class Ball3D {
       this.camLook.lerp(look, kl);
       this.camera.position.copy(this.camPos); this.camera.lookAt(this.camLook);
       return;
+    } else if (game.state === 'hit' && ballE && game.hit.f.outcome === 'hr' && t - game.hit.at < 1.6) {
+      // it's gone: a moment beside the plate for the bat flip, then off after the ball
+      pos.set(side * 3.6, 1.45, 2.4); look.set(side * 0.9, 0.75, -0.6); rate = 3.2;
     } else if ((game.state === 'hit' && ballE) || (game.state === 'result' && game.lastBall)) {
       // broadcast-style: rise up behind home plate and track the ball over the field
       const b = game.state === 'hit' ? ballE : game.lastBall;

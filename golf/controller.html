@@ -58,7 +58,7 @@
   let cid = store.get('cid', null);
   if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cid', cid); }
   const params = new URLSearchParams(location.search);
-  $('room').value = (params.get('room') || store.get('golf-room', '')).toUpperCase();
+  $('room').value = (params.get('room') || store.get('room', '')).toUpperCase();
   $('name').value = store.get('name', '');
   $('steer').value = store.get('golf-steer', 'normal');
   $('flipSteer').checked = store.get('golf-flipSteer', '0') === '1';
@@ -66,7 +66,7 @@
 
   let kicked = false, st = null, enabled = false, hintTimer = 0, hintUntil = 0;
   const client = new SB.Client({
-    id: cid, namespace: 'swinggolf/v1/',
+    id: cid,
     onStatus(kind, text) {
       if (kind === 'open') { $('sheet').hidden = true; setState('Connected! Waiting for the round…'); }
       else if (kind === 'error' || kind === 'closed') { $('sheet').hidden = false; $('sheetStatus').textContent = text; $('go').textContent = 'Reconnect'; $('hold').disabled = true; }
@@ -101,7 +101,7 @@
     mode: 'impact', button: $('hold'), meter: $('meter'), minPeak: 150, fullPeak: 900,
     labels: { sub: 'take it back, swing through' },
     canSwing: () => !!(st && st.yourTurn),
-    onArm: on => client.send({ t: 'arm', on }),
+    onArm: on => { client.send({ t: 'arm', on }); live.on = on && !pad.tapMode; },
     onSwing: r => {
       const putter = !!(st && st.putter);
       const path = r.tap ? 0 : pathFrom(r.dirDeg, putter);
@@ -147,6 +147,8 @@
     else if (cur) setState(`Waiting for ${cur.name}…`);
   }
 
+  // the golfer's backswing on the big screen follows the phone while the button's held
+  const live = SB.liveTilt({ onLive: v => client.send({ t: 'live', x: v.x, y: v.y }) });
   SB.repeatButton($('prev'), () => st && st.yourTurn && client.send({ t: 'club', d: -1 }));
   SB.repeatButton($('next'), () => st && st.yourTurn && client.send({ t: 'club', d: 1 }));
   $('settings').onclick = () => { $('sheet').hidden = false; $('go').textContent = client.open ? 'Save' : 'Connect & enable motion'; $('sheetStatus').textContent = ''; };
@@ -155,7 +157,7 @@
     const room = $('room').value.trim().toUpperCase();
     const name = $('name').value.trim().slice(0, 14);
     if (room.length !== 4) { $('sheetStatus').textContent = 'The code is 4 letters, shown on the big screen.'; return; }
-    store.set('golf-room', room); store.set('name', name);
+    store.set('room', room); store.set('name', name);
     store.set('golf-steer', $('steer').value); store.set('golf-flipSteer', $('flipSteer').checked ? '1' : '0'); store.set('golf-flipCurve', $('flipCurve').checked ? '1' : '0');
     if (!kicked && SB.clearUndo($('sheet'), `?room=${room}&join=1`)) return;   // typed? a fresh page, so no "Undo Typing" pop-up mid-swing
     if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); }
@@ -172,7 +174,7 @@
   // arrived from a game switch on the big screen: rejoin straight away, one tap turns on motion
   SB.autoJoin({
     title: 'Golf',
-    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('golf-room', room); setState('Joining Golf…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
+    connect: room => { $('sheet').hidden = true; $('room').value = room; store.set('room', room); setState('Joining Golf…'); client.connect(room, { t: 'hello', id: cid, name: store.get('name', '') }); },
     enable: async () => { if (!enabled) { enabled = true; await pad.enable(); SB.keepAwake(); } },
   });
 })();

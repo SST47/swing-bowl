@@ -32,15 +32,18 @@
   function rnd(rng, a, b) { return a + (b - a) * rng(); }
 
   // Build a pitch. Position at u in [0, 1]: release -> plate (z = 0).
-  function makePitch(rng) {
+  // opts (a person pitching): { id: which pitch, power: 0..1 how hard they threw }
+  function makePitch(rng, opts) {
     rng = rng || Math.random;
     const total = PITCHES.reduce((a, p) => a + p.weight, 0);
     let r = rng() * total, type = PITCHES[0];
     for (const p of PITCHES) { if ((r -= p.weight) <= 0) { type = p; break; } }
+    const picked = opts && PITCHES.find(p => p.id === opts.id);
+    if (picked) type = picked;
     const strike = rng() < 0.8;
     const tx = strike ? rnd(rng, -ZONE.x * 0.9, ZONE.x * 0.9) : (rng() < 0.5 ? -1 : 1) * rnd(rng, ZONE.x + 0.08, ZONE.x + 0.3);
     const ty = strike ? rnd(rng, ZONE.y0 + 0.05, ZONE.y1 - 0.05) : rnd(rng, 0.25, 1.35);
-    const speed = rnd(rng, type.speed[0], type.speed[1]);
+    const speed = opts && opts.power !== undefined ? type.speed[0] - 2 + (type.speed[1] + 1.5 - type.speed[0] + 2) * Math.max(0, Math.min(1, opts.power)) : rnd(rng, type.speed[0], type.speed[1]);
     const dist = Math.hypot(RELEASE.z, RELEASE.x - tx, RELEASE.y - ty);
     return { type, speed, dur: dist / speed, target: { x: tx, y: ty }, brk: { x: type.brk[0], y: type.brk[1] }, inZone: Math.abs(tx) <= ZONE.x + 0.037 && ty >= ZONE.y0 && ty <= ZONE.y1 };
   }
