@@ -402,15 +402,17 @@ export class Tennis3D {
       return;
     }
     // half the screen each: the near-end player on the left, the far-end player on the right
-    const names = [game.who(0), game.who(1)], key = names.map(p => p.name + p.color).join('|');
+    const ends = game.splitSwap ? [1, 0] : [0, 1];   // which end each half shows
+    const names = [game.who(ends[0]), game.who(ends[1])], key = names.map(p => p.name + p.color).join('|');
     if (key !== this.splitKey) {
       this.splitKey = key;
       this.splitEl.querySelectorAll('b').forEach((el, i) => { el.textContent = names[i].name; el.style.background = names[i].color; });
     }
     this._lens(w / 2 / h, true);
     R.setScissorTest(true);
-    for (let end = 0; end < 2; end++) {
-      R.setViewport(end * w / 2, 0, w / 2, h); R.setScissor(end * w / 2, 0, w / 2, h);
+    for (let half = 0; half < 2; half++) {
+      const end = ends[half];
+      R.setViewport(half * w / 2, 0, w / 2, h); R.setScissor(half * w / 2, 0, w / 2, h);
       this._camera(game, dt, t, this.rigs[end], end);
       R.render(S, this.camera);
     }

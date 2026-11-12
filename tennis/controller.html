@@ -22,6 +22,7 @@
   <div class="meter"><div id="meter"></div></div>
   <div class="readout" id="readout"></div>
   <div class="readout tally" id="tally"></div>
+  <div class="moderow" id="swapRow" hidden><button id="swapSides">⇄ Swap sides on the screen</button></div>
   <div class="steer" id="steer" hidden><div class="track"><i id="steerDot"></i></div><small>Tip your phone left or right to run</small></div>
   <div class="holdwrap">
     <div class="tilt" id="tilt" hidden><div class="tphone"><i></i></div><b>Tilt your phone up to toss</b><small>then swing as the ball comes down</small></div>
@@ -97,6 +98,7 @@
     },
     onHint: hint,
   });
+  $('swapSides').onclick = () => { client.send({ t: 'swapsplit' }); hint('Swapped sides on the big screen.'); };
   // how your player gets to the ball: by themselves, or steered by tipping the phone left and right
   let tiltRun = store.get('run', 'auto') === 'tilt', runSentAt = 0;
   const sendRun = () => { if (client.open) { runSentAt = Date.now(); client.send({ t: 'move', tilt: tiltRun && !pad.tapMode }); } };
@@ -157,6 +159,7 @@
       $('dot').style.background = me.color; $('myname').textContent = me.name;
       const cam = st.view === 'left' ? '<br>📺 You’re the left half of the screen' : st.view === 'right' ? '<br>📺 You’re the right half of the screen' : st.view === 'you' ? '<br>📷 The camera is behind you' : st.view === 'them' ? '<br>📷 The camera is at the other end' : '';
       const mate = st.partner ? `With <b>${SB.esc(st.partner)}</b> · ` : '';
+      $('swapRow').hidden = !(st.view === 'left' || st.view === 'right');
       $('tally').innerHTML = st.onCourt ? `${mate}Games <b>${st.games[st.end]}–${st.games[1 - st.end]}</b> · Points <b>${st.points[st.end]}–${st.points[1 - st.end]}</b> · Wins <b>${me.wins}</b>${cam}` : `Wins <b>${me.wins}</b>`;
     }
     const tap = pad.tapMode;   // no motion sensor: the button is the swing

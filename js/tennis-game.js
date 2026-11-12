@@ -95,6 +95,8 @@
     _humanEnds() { return [0, 1].filter(e => this.lineup[e].some(i => i !== null)); }
     _bothHuman() { return this._humanEnds().length === 2; }
     get split() { return this.splitOn && this._bothHuman(); }
+    // which half of the split screen each end gets (false: the near end on the left)
+    swapSplit() { this.splitSwap = !this.splitSwap; if (this.split) { const L = this._nm(this.splitSwap ? 1 : 0); this._flash(`${L.toUpperCase()} ON THE LEFT`, 'info'); } this._emit(); return true; }
     toggleSplit() { this.splitOn = !this.splitOn; if (this._bothHuman()) this._flash(this.splitOn ? 'SPLIT SCREEN' : `ONE VIEW · BEHIND ${this._nm(this.camEnd).toUpperCase()}`, 'info'); this._emit(); return true; }
 
     // ---------- players ----------
@@ -181,7 +183,7 @@
         state: this.state, over: this.over, started: this.started, mode: this.mode, doubles: this.doubles,
         players: this.players.map(q => ({ name: q.name, color: q.color, wins: q.wins, lefty: !!q.lefty, tilt: !!q.tilt })),
         lineup: this.lineup.map(a => a.slice()), court: this.court, server: s.server, serverFig: sf,
-        games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd, split: this.split,
+        games: s.games.slice(), points: [s.label(0), s.label(1)], camEnd: this.camEnd, split: this.split, splitSwap: !!this.splitSwap,
         cur: X ? this.figs[X.fig].idx : serving && sf !== null ? this.figs[sf].idx : null,
         hitting: X ? X.end : null, hittingFig: X ? X.fig : null, winner: s.winner,
       };
@@ -189,6 +191,7 @@
 
     // ---------- input ----------
     input(idx, m) {
+      if (m.t === 'swapsplit') return this.swapSplit();   // either player can swap halves
       if (m.t === 'mode') return this.setMode(m.mode);   // anyone in the room can switch how you play
       if (m.t === 'move') { const p = this.players[idx]; if (p && !!p.tilt !== !!m.tilt) { p.tilt = !!m.tilt; this._emit(); } return true; }   // run automatically, or steer by tilting
       const fi = this.figOf(idx);

@@ -12,7 +12,7 @@
   <div id="view3d" style="position:absolute;inset:0"></div>
   <div class="vignette"></div>
   <div id="hud"></div>
-  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="modeBtn" title="Switch how you play (T)">🤝 Team up vs CPU</button> <button id="splitBtn" title="Split screen on or off (S)" hidden>◧ Split screen</button> <button id="mute">🔊</button></div>
+  <div class="corner" id="corner" style="left:auto;right:14px;bottom:14px">Join: <b id="cornerCode">····</b> <button id="showLobby">Players / QR</button> <button id="modeBtn" title="Switch how you play (T)">🤝 Team up vs CPU</button> <button id="splitBtn" title="Split screen on or off (S)" hidden>◧ Split screen</button> <button id="swapBtn" title="Swap which player is on which side (X)" hidden>⇄ Swap sides</button> <button id="mute">🔊</button></div>
 
   <div class="overlay" id="lobby">
     <div class="card lobby">
@@ -29,7 +29,7 @@
           <button class="btn" id="start">Start game</button>
           <button class="btn ghost" id="newgame" hidden>New game</button>
         </div>
-        <div class="keys">No phone handy? <kbd>Space</kbd> swings for player 1, <kbd>Enter</kbd> for player 2, when the ring closes on the ball · <kbd>T</kbd> play each other / team up · <kbd>S</kbd> split screen on or off · <kbd>V</kbd> camera to the other end · <kbd>N</kbd> new match</div>
+        <div class="keys">No phone handy? <kbd>Space</kbd> swings for player 1, <kbd>Enter</kbd> for player 2, when the ring closes on the ball · <kbd>T</kbd> play each other / team up · <kbd>S</kbd> split screen on or off · <kbd>X</kbd> swap sides · <kbd>V</kbd> camera to the other end · <kbd>N</kbd> new match</div>
         <p style="font-size:13px"><a href="../">← All games</a></p>
       </div>
     </div>
@@ -62,6 +62,7 @@ import { Tennis3D } from '../js/tennis3d.js';
   const showMode = () => {
     const team = game.mode === 'team';
     $('modeBtn').textContent = team ? '🆚 Play each other' : '🤝 Team up vs CPU';
+    $('swapBtn').hidden = !game.split;
     $('splitBtn').hidden = !game._bothHuman(); $('splitBtn').textContent = game.splitOn ? '▣ One view' : '◧ Split screen';
     document.querySelectorAll('.tmodes [data-mode]').forEach(b => { b.classList.toggle('on', b.dataset.mode === game.mode); b.classList.toggle('ghost', b.dataset.mode !== game.mode); });
   };
@@ -72,6 +73,7 @@ import { Tennis3D } from '../js/tennis3d.js';
   showMode();
   $('modeBtn').onclick = () => { game.toggleMode(); showMode(); };
   $('splitBtn').onclick = () => game.toggleSplit();
+  $('swapBtn').onclick = () => game.swapSplit();
   document.querySelectorAll('.tmodes [data-mode]').forEach(b => { b.onclick = () => { game.setMode(b.dataset.mode); showMode(); }; });
   room = new SB.Room({
     gameId: 'tennis', game,
@@ -85,7 +87,7 @@ import { Tennis3D } from '../js/tennis3d.js';
         partner: mate >= 0 ? game.figWho(mate).name : null, mode: info.mode,
         games: info.games, points: info.points, note: fi >= 0 ? game.note[fi] : null,
         // head to head, the camera takes turns sitting behind each player
-        view: fi >= 0 && game._bothHuman() ? (info.split ? (end === 0 ? 'left' : 'right') : info.camEnd === end ? 'you' : 'them') : null,
+        view: fi >= 0 && game._bothHuman() ? (info.split ? ((end === 0) !== info.splitSwap ? 'left' : 'right') : info.camEnd === end ? 'you' : 'them') : null,
       };
     },
   });
@@ -103,6 +105,7 @@ import { Tennis3D } from '../js/tennis3d.js';
     if (e.code === 'KeyT') { game.toggleMode(); showMode(); return; }
     if (e.code === 'KeyV') { game.toggleView(); return; }
     if (e.code === 'KeyS') { game.toggleSplit(); return; }
+    if (e.code === 'KeyX') { game.swapSplit(); return; }
     if (e.code === 'Escape') { $('lobby').hidden = !$('lobby').hidden; return; }
     ensure();
     const who = e.code === 'Space' ? 0 : e.code === 'Enter' ? 1 : -1;
