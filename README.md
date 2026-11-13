@@ -80,3 +80,5 @@ node tests/tennis.test.js     # shot solving, hit points, in-court rates by timi
 ```
 
 The look is "sports day": mowed turf, chalk lines and chunky buttons, with each game's own surface on the phones. The type is [Fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) by Milena Brandão, bundled in `fonts/` under the SIL Open Font License (`fonts/Fredoka-OFL.txt`).
+
+Built with help from AI tools.
